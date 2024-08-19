@@ -4,7 +4,7 @@ import Combine
 
 public class ViewPortHandler {
     
-    // CGAffineTransform Stream
+    // viewPortMatrix stream
     @Published var viewPortMatrix: CGAffineTransform = .identity
 
     /// this rectangle defines the area in which graph values can be drawn
