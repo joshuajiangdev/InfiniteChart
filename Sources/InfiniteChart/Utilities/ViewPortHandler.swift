@@ -2,7 +2,13 @@ import Foundation
 import CoreGraphics
 import Combine
 
-public class ViewPortHandler {
+public class ViewPortHandler: Equatable {
+    
+    public static func == (lhs: ViewPortHandler, rhs: ViewPortHandler) -> Bool {
+        lhs.viewPortMatrix == rhs.viewPortMatrix &&
+        lhs.chartHeight == rhs.chartHeight &&
+        lhs.chartWidth == rhs.chartWidth
+    }
     
     // viewPortMatrix stream
     @Published var viewPortMatrix: CGAffineTransform = .identity
@@ -18,6 +24,17 @@ public class ViewPortHandler {
 
     private let maxScaleX = CGFloat.greatestFiniteMagnitude
     private let maxScaleY = CGFloat.greatestFiniteMagnitude
+    
+    var canZoomOutMoreX: Bool {
+        return viewPortMatrix.a > minScaleX
+    }
+    var canZoomInMoreX: Bool {
+        return viewPortMatrix.a < maxScaleX
+    }
+    
+    public init(width: CGFloat, height: CGFloat) {
+        setChartDimens(width: width, height: height)
+    }
 
     func setChartDimens(width: CGFloat, height: CGFloat) {
         chartWidth = width
@@ -26,19 +43,45 @@ public class ViewPortHandler {
     }
 
 
-    func zoom(scaleX: CGFloat, scaleY: CGFloat, x: CGFloat = 0, y: CGFloat = 0) {
-        let tx = x - viewPortMatrix.tx
-        let ty = y - viewPortMatrix.ty
+    public func zoom(scaleX: CGFloat, scaleY: CGFloat, x: CGFloat = 0, y: CGFloat = 0) {
         
-        var temp = viewPortMatrix.translatedBy(x: tx, y: ty).scaledBy(x: scaleX, y: scaleY).translatedBy(x: -tx, y: -ty)
+        let point = CGPoint(x: x, y: y)
+        let oldMatrix = viewPortMatrix
+        let scaleDelta = round(scaleX*1000)/1000
+        var newTx = (1-scaleDelta)*x*oldMatrix.a + oldMatrix.tx
+        newTx = round(newTx*1000)/1000
+        
+        var newMatrix = oldMatrix
+        newMatrix.a = oldMatrix.a * scaleDelta
+        newMatrix.tx = newTx
+//            .scaledBy(
+//                x: newScale,
+//                y: scaleY
+//            ).translatedBy(
+//                x: newTx,
+//                y: (1-scaleY)*y*oldMatrix.c
+//            )
+        
+        print(point)
+        print(scaleDelta, newTx)
+        print(oldMatrix.a,oldMatrix.tx)
+        print(newMatrix.a,newMatrix.tx)
+        print("Before: \(point.applying(oldMatrix).x)")
+        print("After: \(point.applying(newMatrix).x)")
+        print("------------")
+        viewPortMatrix = newMatrix
+    }
+
+    public func translate(pt: CGPoint) {
+        var temp = viewPortMatrix.translatedBy(x: -pt.x, y: 0)
         limitTransAndScale(matrix: &temp, content: contentRect)
         viewPortMatrix = temp
     }
 
-    func translate(pt: CGPoint) {
-        var temp = viewPortMatrix.translatedBy(x: -pt.x, y: -pt.y)
-        limitTransAndScale(matrix: &temp, content: contentRect)
-        viewPortMatrix = temp
+    public func update(newMatrix: CGAffineTransform) {
+        var matrix = newMatrix
+        limitTransAndScale(matrix: &matrix, content: contentRect)
+        viewPortMatrix = matrix
     }
 
     private func limitTransAndScale(matrix: inout CGAffineTransform, content: CGRect) {
