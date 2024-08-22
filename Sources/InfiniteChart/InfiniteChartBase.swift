@@ -11,7 +11,7 @@ public class InfiniteChartBase: UIView {
         size: bounds.size,
         dataRanges: dataRanges
     )
-    lazy var xAxisView = XAxisView<AccelerateTransformer>()
+    lazy var xAxisView = XAxisView()
     
     override init(frame: CGRect) {
         super.init(frame: frame)

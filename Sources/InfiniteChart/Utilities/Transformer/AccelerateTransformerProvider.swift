@@ -90,7 +90,7 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         valueToPixelMatrix = result
     }
     
-    func zoom(scaleX: CGFloat, scaleY: CGFloat, x: CGFloat = 0, y: CGFloat = 0) {
+    public func zoom(scaleX: CGFloat, scaleY: CGFloat, x: CGFloat = 0, y: CGFloat = 0) {
         let valuePoint = self.transformer.valueForTouchPoint(CGPoint(x: x, y: y))
         
         let newTx = (1-scaleX)*valuePoint.x*valueToPixelMatrix[0] + valueToPixelMatrix[6]

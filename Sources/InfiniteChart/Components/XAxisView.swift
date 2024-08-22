@@ -8,8 +8,16 @@
 import UIKit
 import Combine
 
-class XAxisView<TransformerType: Transformer>: UIView {
+class XAxisView: UIView, Transformable, Pannable, Pinchable {
     
+    // MARK: - Transformable
+    
+    typealias TransformerType = AccelerateTransformer
+    var transformerProvider: (any TransformerProviding)?
+    var transformableAxis: TransformableAxis = .horizontal
+    var transformerStream: AnyPublisher<AccelerateTransformer, Never>?
+    
+
     // TODO: Move a data model
     private let labelCount = 12
     private let centerAxisLabelsEnabled = true
@@ -18,17 +26,16 @@ class XAxisView<TransformerType: Transformer>: UIView {
     
     private var labels: [UILabel] = []
     
-    var transformerStream: AnyPublisher<TransformerType, Never>?
-    var transformerProvider: AccelerateTransformerProvider?
     var disposeBag = Set<AnyCancellable>()
     private var currentTransformer: TransformerType?
     
     private var panGestureRecognizer: UIPanGestureRecognizer!
     private var pinchGestureRecognizer: UIPinchGestureRecognizer!
     
-    private var lastDragPoint: CGPoint?
-    private var isScaling = false
-
+    // MARK: - Pannable
+    
+    var lastDragPoint: CGPoint?
+    
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .yellow
@@ -37,66 +44,16 @@ class XAxisView<TransformerType: Transformer>: UIView {
     }
     
     required init?(coder: NSCoder) {
-        fatalError()
+        fatalError("init(coder:) has not been implemented")
     }
     
     private func setupGestureRecognizers() {
-        panGestureRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
-        panGestureRecognizer.maximumNumberOfTouches = 1
-        addGestureRecognizer(panGestureRecognizer)
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
+        panGesture.maximumNumberOfTouches = 1
+        addGestureRecognizer(panGesture)
         
-        pinchGestureRecognizer = UIPinchGestureRecognizer(target: self, action: #selector(handlePinchGesture(_:)))
-        addGestureRecognizer(pinchGestureRecognizer)
-    }
-    
-    @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
-        guard let transformerProvider = transformerProvider else { return }
-        
-        switch gesture.state {
-        case .began:
-            lastDragPoint = gesture.location(in: self)
-            
-        case .changed:
-            guard let lastDragPoint = lastDragPoint else { return }
-            
-            let currentPoint = gesture.location(in: self)
-            let deltaX = currentPoint.x - lastDragPoint.x
-            
-            // Update the viewport using pixel values
-            transformerProvider.translate(delta: CGPoint(x: deltaX, y: 0))
-            
-            // Update last drag point
-            self.lastDragPoint = currentPoint
-            
-        case .ended, .cancelled:
-            lastDragPoint = nil
-            
-        default:
-            break
-        }
-    }
-    
-    @objc private func handlePinchGesture(_ gesture: UIPinchGestureRecognizer) {
-        guard let transformerProvider = transformerProvider else { return }
-        
-        switch gesture.state {
-        case .began:
-            isScaling = true
-            
-        case .changed:
-            if isScaling {
-                let scaleX = gesture.scale
-                transformerProvider.zoom(scaleX: scaleX, scaleY: 1.0, x: bounds.width/2, y: 0)
-                gesture.scale = 1.0
-            }
-            
-        case .ended, .cancelled:
-            isScaling = false
-            setNeedsDisplay()
-            
-        default:
-            break
-        }
+        let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinchGesture(_:)))
+        addGestureRecognizer(pinchGesture)
     }
     
     func setup() {
@@ -226,10 +183,20 @@ class XAxisView<TransformerType: Transformer>: UIView {
             let value = centerAxisLabelsEnabled ? centeredEntries[index] : entries[index]
             let xPosition = transformer.pixelForValue(DoublePrecisionPoint(x: value, y: 0)).x
             
-            label.frame = CGRect(x: xPosition - label.intrinsicContentSize.height / 2,
-                                 y: 0,
-                                 width: label.intrinsicContentSize.height,
-                                 height: labelHeight)
+            label.frame = CGRect(
+                x: xPosition - label.intrinsicContentSize.height / 2,
+                y: 0,
+                width: label.intrinsicContentSize.height,
+                height: labelHeight
+            )
         }
+    }
+    
+    @objc func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
+        self.panGestureHandler(gesture)
+    }
+
+    @objc func handlePinchGesture(_ gesture: UIPinchGestureRecognizer) {
+        self.pinchGestureHandler(gesture)
     }
 }
