@@ -6,12 +6,13 @@ public class InfiniteChartBase: UIView {
     let yAxisWidth: CGFloat = 50
 
     let dataRanges = DataRanges(chartXMin: 0, deltaX: 100, chartYMin: 0, deltaY: 100)
-    lazy var viewPortHandler = ViewPortHandler(width: bounds.size.width - yAxisWidth, height: bounds.size.height - xAxisHeight)
     lazy var transformerProvider = AccelerateTransformerProvider(
         size: bounds.size,
         dataRanges: dataRanges
     )
     lazy var xAxisView = XAxisView()
+    lazy var yAxisView = YAxisView()
+    lazy var chartBaseView = ChartBaseView()
     
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -19,6 +20,8 @@ public class InfiniteChartBase: UIView {
         backgroundColor = .red
 
         addSubview(xAxisView)
+        addSubview(yAxisView)
+        addSubview(chartBaseView)
     }
 
     public override func layoutSubviews() {
@@ -32,6 +35,20 @@ public class InfiniteChartBase: UIView {
             width: bounds.size.width - yAxisWidth,
             height: xAxisHeight
         )
+        
+        yAxisView.frame = CGRect(
+            x: bounds.size.width - yAxisWidth,
+            y: 0,
+            width: yAxisWidth,
+            height: bounds.size.height - xAxisHeight
+        )
+        
+        chartBaseView.frame = CGRect(
+            x: 0,
+            y: 0,
+            width: bounds.size.width - yAxisWidth,
+            height: bounds.size.height - xAxisHeight
+        )
     }
     
     required init?(coder: NSCoder) {
@@ -42,5 +59,12 @@ public class InfiniteChartBase: UIView {
         xAxisView.transformerStream = transformerProvider.transformerStream
         xAxisView.transformerProvider = transformerProvider
         xAxisView.setup()
+        
+        yAxisView.transformerStream = transformerProvider.transformerStream
+        yAxisView.transformerProvider = transformerProvider
+        yAxisView.setup()
+        
+        chartBaseView.transformerStream = transformerProvider.transformerStream
+        chartBaseView.transformerProvider = transformerProvider
     }
 }

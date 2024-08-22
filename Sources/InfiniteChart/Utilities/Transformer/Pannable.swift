@@ -24,8 +24,9 @@ extension Pannable {
             guard let lastDragPoint = lastDragPoint else { return }
             
             let currentPoint = gesture.location(in: self)
-            let deltaX = transformableAxis != .vertical ? currentPoint.x - lastDragPoint.x : 0
-            let deltaY = transformableAxis != .horizontal ? currentPoint.y - lastDragPoint.y : 0
+            
+            let deltaX = transformableAxes.contains(.horizontal) ? currentPoint.x - lastDragPoint.x : 0
+            let deltaY = transformableAxes.contains(.vertical) ? currentPoint.y - lastDragPoint.y : 0
             
             transformerProvider.translate(delta: CGPoint(x: deltaX, y: deltaY))
             

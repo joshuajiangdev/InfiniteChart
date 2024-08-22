@@ -10,13 +10,12 @@ import Combine
 enum TransformableAxis {
     case horizontal
     case vertical
-    case both
 }
 
 protocol Transformable {
     associatedtype TransformerType: Transformer
     
     var transformerProvider: (any TransformerProviding)? { get set }
-    var transformableAxis: TransformableAxis { get }
+    var transformableAxes: [TransformableAxis] { get }
     var transformerStream: AnyPublisher<TransformerType, Never>? { get }
 }
