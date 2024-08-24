@@ -25,8 +25,6 @@ class ChartBaseView: UIView, Transformable, Pannable, Pinchable {
     
     // MARK: - Private Properties
     
-    
-    
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear

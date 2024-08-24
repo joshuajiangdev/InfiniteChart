@@ -1,23 +1,23 @@
 //
-//  XAxis.swift
+//  YAxisView.swift
 //  
 //
-//  Created by Joshua Jiang on 8/18/24.
+//  Created by Joshua Jiang on 8/21/24.
 //
 
 import UIKit
 import Combine
 
-class XAxisView: UIView, Transformable, Pannable, Pinchable {
+class YAxisView: UIView, Transformable, Pannable, Pinchable {
+    
     // MARK: - Transformable
     
     typealias TransformerType = AccelerateTransformer
     var transformerProvider: (any TransformerProviding)?
-    var transformableAxes: [TransformableAxis] = [.horizontal]
+    var transformableAxes: [TransformableAxis] = [.vertical]
     var transformerStream: AnyPublisher<AccelerateTransformer, Never>?
     
-
-    // TODO: Move a data model
+    // TODO: Move to a data model
     private let labelCount = 12
     private let centerAxisLabelsEnabled = true
     private var entries: [Double] = []
@@ -28,12 +28,11 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
     var disposeBag = Set<AnyCancellable>()
     private var currentTransformer: TransformerType?
     
-    private var panGestureRecognizer: UIPanGestureRecognizer!
-    private var pinchGestureRecognizer: UIPinchGestureRecognizer!
-    
     // MARK: - Pannable
     
     var lastDragPoint: CGPoint?
+    
+    private var oldBounds: CGRect = .zero
     
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -70,15 +69,14 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
             let label = UILabel()
             label.textAlignment = .center
             label.font = UIFont.systemFont(ofSize: 10)
-            label.transform = CGAffineTransform(rotationAngle: CGFloat.pi / 2)
             addSubview(label)
             labels.append(label)
         }
     }
     
     func setupAxis(transformer: any Transformer) {
-        let min = transformer.valueForTouchPoint(CGPoint(x: 0, y: 0)).x
-        let max = transformer.valueForTouchPoint(CGPoint(x: bounds.width, y: 0)).x
+        let min = transformer.valueForTouchPoint(CGPoint(x: 0, y: bounds.height)).y
+        let max = transformer.valueForTouchPoint(CGPoint(x: 0, y: 0)).y
         computeAxisValues(min: min, max: max)
         updateLabels()
         setNeedsLayout()
@@ -90,7 +88,7 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
         let rawInterval = range / Double(labelCount)
         var interval = rawInterval.roundedToNextSignificant()
         // TODO: Use granularity
-        interval = Swift.max(interval, 0.1)
+        interval = Swift.max(interval, 0.001)
         
         let intervalMagnitude = pow(10.0, Double(Int(log10(interval)))).roundedToNextSignificant()
         let intervalSigDigit = Int(interval / intervalMagnitude)
@@ -113,7 +111,9 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
 
         if interval != 0.0, last != first
         {
-            stride(from: first, through: last, by: interval).forEach { _ in n += 1 }
+            stride(from: first, through: last, by: interval).forEach { _ in
+                n += 1
+            }
         }
 
         // Ensure stops contains at least n elements.
@@ -159,7 +159,6 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
             let label = UILabel()
             label.textAlignment = .center
             label.font = UIFont.systemFont(ofSize: 10)
-            label.transform = CGAffineTransform(rotationAngle: CGFloat.pi / 2)
             addSubview(label)
             labels.append(label)
         }
@@ -176,17 +175,24 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
         
         guard let transformer = currentTransformer else { return }
         
-        let labelHeight: CGFloat = 50
+        // Detect if bounds have changed
+        if self.bounds.size != oldBounds.size {
+            // The bounds have changed, handle the change here
+            oldBounds = self.bounds
+            setupAxis(transformer: transformer)
+            return
+        }
+        let labelWidth: CGFloat = 50
         
         for (index, label) in labels.enumerated() {
             let value = centerAxisLabelsEnabled ? centeredEntries[index] : entries[index]
-            let xPosition = transformer.pixelForValue(DoublePrecisionPoint(x: value, y: 0)).x
+            let yPosition = transformer.pixelForValue(DoublePrecisionPoint(x: 0, y: value)).y
             
             label.frame = CGRect(
-                x: xPosition - label.intrinsicContentSize.height / 2,
-                y: 0,
-                width: label.intrinsicContentSize.height,
-                height: labelHeight
+                x: bounds.width - labelWidth,
+                y: yPosition - label.intrinsicContentSize.height / 2,
+                width: labelWidth,
+                height: label.intrinsicContentSize.height
             )
         }
     }

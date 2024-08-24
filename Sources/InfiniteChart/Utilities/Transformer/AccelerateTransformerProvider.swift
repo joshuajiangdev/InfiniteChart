@@ -10,16 +10,9 @@ import Foundation
 import Accelerate
 import Combine
 
-public struct DataRanges {
-    let chartXMin: Double
-    let deltaX: Double
-    let chartYMin: Double
-    let deltaY: Double
-}
-
 final public class AccelerateTransformerProvider: TransformerProviding {
     
-    let dataRanges: DataRanges
+    let initDataRanges: DataRanges
     
     private(set) var chartWidth: CGFloat = 0
     private(set) var chartHeight: CGFloat = 0
@@ -41,7 +34,7 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         size: CGSize,
         dataRanges: DataRanges
     ) {
-        self.dataRanges = dataRanges
+        self.initDataRanges = dataRanges
         chartWidth = size.width
         chartHeight = size.height
         

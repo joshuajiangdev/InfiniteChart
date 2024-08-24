@@ -7,26 +7,10 @@
 
 import UIKit
 
-protocol DataProvider {
-    func value(at index: Double) -> Double?
-}
-
-class LineDataProvider: DataProvider {
-    let dataFetcher: BTCDataFetcher
-    
-    init(dataFetcher: BTCDataFetcher) {
-        self.dataFetcher = dataFetcher
-    }
-    
-    func value(at index: Double) -> Double? {
-        dataFetcher.getData(for: index)
-    }
-}
-
 final class LineRender {
-    let dataProvider: LineDataProvider
+    let dataProvider: any ChartDataProvider
     
-    init(dataProvider: LineDataProvider) {
+    init(dataProvider: any ChartDataProvider) {
         self.dataProvider = dataProvider
     }
     
@@ -37,15 +21,15 @@ final class LineRender {
         let transformer = transformerProvider.transformer
         
         var startX = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: 0, y: 0)).x.rounded(.up)
-        startX = dataProvider.dataFetcher.getClosestXValue(to: startX, seekBelow: true) ?? startX
+        startX = dataProvider.getClosestXValue(to: startX, seekBelow: true) ?? startX
         var endX = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: transformerProvider.chartWidth, y: 0)).x.rounded(.down)
-        endX = dataProvider.dataFetcher.getClosestXValue(to: endX, seekBelow: false) ?? endX
+        endX = dataProvider.getClosestXValue(to: endX, seekBelow: false) ?? endX
         let step: Double = 60*1000 // Adjust step size as needed
         
         var isFirstPoint = true
         
         for x in stride(from: startX, to: endX, by: step) {
-            guard let y = dataProvider.value(at: x) else {
+            guard let y = dataProvider.getYValue(for: x) else {
                 continue
             }
             

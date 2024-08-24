@@ -6,23 +6,17 @@ public class InfiniteChartBase: UIView {
     let xAxisHeight: CGFloat = 50
     let yAxisWidth: CGFloat = 50
 
-    var dataRanges: DataRanges?
-    lazy var dataFetcher = BTCDataFetcher()
     var disposeBag = Set<AnyCancellable>()
+    
+    // MARK: - Private Properties
+    
+    let dataProvider: any ChartDataProvider
     
     // TODO: Clear config/setup flow
     lazy var transformerProvider: AccelerateTransformerProvider = {
-        guard let ranges = dataFetcher.getDataRanges() else {
+        guard let dataRanges = dataProvider.getInitDataRanges() else {
             fatalError("Failed to get data ranges from BTCDataFetcher")
         }
-        let dataRanges = DataRanges(
-            chartXMin: ranges.minX,
-            deltaX: ranges.deltaX,
-            chartYMin: ranges.minY,
-            deltaY: ranges.deltaY
-        )
-        
-        self.dataRanges = dataRanges
         
         return AccelerateTransformerProvider(
             size: bounds.size,
@@ -39,9 +33,11 @@ public class InfiniteChartBase: UIView {
     lazy var xAxisView = XAxisView()
     lazy var yAxisView = YAxisView()
     lazy var chartBaseView = ChartBaseView()
-    lazy var lineRender = LineRender(dataProvider: LineDataProvider(dataFetcher: dataFetcher))
+    lazy var lineRender = LineRender(dataProvider: dataProvider)
     
-    override init(frame: CGRect) {
+    public init(frame: CGRect, dataProvider: any ChartDataProvider){
+        self.dataProvider = dataProvider
+        
         super.init(frame: frame)
         
         backgroundColor = .red
@@ -50,41 +46,15 @@ public class InfiniteChartBase: UIView {
         addSubview(yAxisView)
         addSubview(chartBaseView)
         
-        // Initialize data fetcher and wait for data to be available
-        Task {
-            await waitForDataFetcher()
-            DispatchQueue.main.async { [weak self] in
-                self?.setupViews()
-            }
-        }
-    }
-
-    private func waitForDataFetcher() async {
-        while dataFetcher.getDataRanges() == nil {
-            try? await Task.sleep(nanoseconds: 100_000_000) // Sleep for 0.1 seconds
-        }
-    }
-    
-    private func setupViews() {
-        // Access transformerProvider here to trigger its initialization
-        _ = transformerProvider
         setupObservable()
-        setNeedsLayout()
-        layoutIfNeeded()
-        
-        setNeedsDisplay()
-        
-        setup()
-        
+        setupSubViews()
     }
 
     public override func layoutSubviews() {
         super.layoutSubviews()
-        guard let dataRanges else {
-            return
-        }
+
         transformerProvider.setChartDimens(width: bounds.width - yAxisWidth, height: bounds.height - xAxisHeight)
-        transformerProvider.prepareMatrixValuePx(dataRanges: dataRanges)
+        transformerProvider.prepareMatrixValuePx(dataRanges: transformerProvider.initDataRanges)
         
         xAxisView.frame = CGRect(
             x: 0,
@@ -106,15 +76,13 @@ public class InfiniteChartBase: UIView {
             width: bounds.size.width - yAxisWidth,
             height: bounds.size.height - xAxisHeight
         )
-        
-        
     }
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
-    public func setup() {
+    public func setupSubViews() {
         xAxisView.transformerStream = transformerProvider.transformerStream
         xAxisView.transformerProvider = transformerProvider
         xAxisView.setup()
@@ -129,8 +97,7 @@ public class InfiniteChartBase: UIView {
     
     public override func draw(_ rect: CGRect) {
         guard
-            let context = UIGraphicsGetCurrentContext(),
-            let dataRanges
+            let context = UIGraphicsGetCurrentContext()
         else {
             return
         }
