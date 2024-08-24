@@ -23,9 +23,13 @@ class ChartBaseView: UIView, Transformable, Pannable, Pinchable {
     
     var lastDragPoint: CGPoint?
     
+    // MARK: - Private Properties
+    
+    
+    
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .green
+        backgroundColor = .clear
         setupGestureRecognizers()
         clipsToBounds = true
     }
@@ -43,15 +47,6 @@ class ChartBaseView: UIView, Transformable, Pannable, Pinchable {
         addGestureRecognizer(pinchGesture)
     }
     
-//    func setup() {
-//        transformerStream?
-//            .sink(receiveValue: { [weak self] transformer in
-//                self?.currentTransformer = transformer
-//                self?.setupAxis(transformer: transformer)
-//            })
-//            .store(in: &disposeBag)
-//    }
-//    
     @objc func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
         self.panGestureHandler(gesture)
     }

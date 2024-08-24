@@ -28,6 +28,36 @@ class AccelerateTransformerTests: XCTestCase {
         )
     }
     
+    func testNonZeroSetup() {
+        accelerateTransformerProvider = AccelerateTransformerProvider(
+            size: CGSize(
+                width: 300,
+                height: 800
+            ),
+            dataRanges: DataRanges(
+                chartXMin: 10000,
+                deltaX: 1000,
+                chartYMin: 600,
+                deltaY: 10
+            )
+        )
+        
+        print(accelerateTransformerProvider.transformer.pixelToValueMatrix)
+        var pixel = CGPoint(x: 0, y: 0)
+        var value = DoublePrecisionPoint(x: 0, y: 0)
+        
+        pixel = CGPoint(x: 0, y: 0)
+        value = accelerateTransformerProvider.transformer.valueForTouchPoint(pixel)
+        XCTAssertEqual(value.x, 10000)
+        XCTAssertEqual(value.y, 610.0)
+        
+        pixel = CGPoint(x: 300, y: 800)
+        value = accelerateTransformerProvider.transformer.valueForTouchPoint(pixel)
+        XCTAssertEqual(value.x, 11000.0)
+        XCTAssertEqual(value.y, 600.0)
+        
+    }
+    
     func testBasic() {
         var pixel = CGPoint(x: 50, y: 50)
         var value = DoublePrecisionPoint(x: 0, y: 0)

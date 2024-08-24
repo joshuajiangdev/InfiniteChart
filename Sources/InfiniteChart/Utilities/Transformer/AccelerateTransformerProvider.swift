@@ -19,12 +19,16 @@ public struct DataRanges {
 
 final public class AccelerateTransformerProvider: TransformerProviding {
     
+    let dataRanges: DataRanges
+    
     private(set) var chartWidth: CGFloat = 0
     private(set) var chartHeight: CGFloat = 0
     
     private(set) var valueToPixelMatrix: [Double] {
         didSet {
-            transformer = AccelerateTransformer(valueToPixelMatrix: valueToPixelMatrix, pixelToValueMatrix: valueToPixelMatrix.invert())
+            let invertedMatrix = valueToPixelMatrix.invert()
+            
+            transformer = AccelerateTransformer(valueToPixelMatrix: valueToPixelMatrix, pixelToValueMatrix: invertedMatrix)
         }
     }
     
@@ -37,6 +41,7 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         size: CGSize,
         dataRanges: DataRanges
     ) {
+        self.dataRanges = dataRanges
         chartWidth = size.width
         chartHeight = size.height
         
@@ -46,7 +51,7 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         let matrixA = [
             scaleX, 0, 0,
             0, -scaleY, 0,
-            -dataRanges.chartXMin * scaleX, -dataRanges.chartYMin * scaleY, 1
+            -dataRanges.chartXMin * scaleX, dataRanges.chartYMin * scaleY, 1
         ]
         
         let matrixB = [
@@ -60,7 +65,8 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         
         valueToPixelMatrix = result
 
-        transformer = AccelerateTransformer(valueToPixelMatrix: valueToPixelMatrix, pixelToValueMatrix: valueToPixelMatrix.invert())
+        let invertedMatrix = valueToPixelMatrix.invert()
+        transformer = AccelerateTransformer(valueToPixelMatrix: valueToPixelMatrix, pixelToValueMatrix: invertedMatrix)
     }
     
     func setChartDimens(width: CGFloat, height: CGFloat) {
@@ -75,7 +81,7 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         let matrixA = [
             scaleX, 0, 0,
             0, -scaleY, 0,
-            -dataRanges.chartXMin * scaleX, -dataRanges.chartYMin * scaleY, 1
+            -dataRanges.chartXMin * scaleX, dataRanges.chartYMin * scaleY, 1
         ]
         
         let matrixB = [

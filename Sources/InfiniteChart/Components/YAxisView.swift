@@ -65,7 +65,7 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
     private func setupLabels() {
         for _ in 0..<labelCount {
             let label = UILabel()
-            label.textAlignment = .right
+            label.textAlignment = .center
             label.font = UIFont.systemFont(ofSize: 10)
             addSubview(label)
             labels.append(label)
@@ -86,7 +86,7 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
         let rawInterval = range / Double(labelCount)
         var interval = rawInterval.roundedToNextSignificant()
         // TODO: Use granularity
-        interval = Swift.max(interval, 0.1)
+        interval = Swift.max(interval, 0.001)
         
         let intervalMagnitude = pow(10.0, Double(Int(log10(interval)))).roundedToNextSignificant()
         let intervalSigDigit = Int(interval / intervalMagnitude)
@@ -109,7 +109,9 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
 
         if interval != 0.0, last != first
         {
-            stride(from: first, through: last, by: interval).forEach { _ in n += 1 }
+            stride(from: first, through: last, by: interval).forEach { _ in
+                n += 1
+            }
         }
 
         // Ensure stops contains at least n elements.
