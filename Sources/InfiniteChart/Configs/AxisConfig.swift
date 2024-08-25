@@ -1,12 +1,12 @@
 import UIKit
 
 public struct AxisConfig {
-    let labelCount: Int
-    let centerAxisLabelsEnabled: Bool
-    let labelFont: UIFont
-    let labelColor: UIColor
-    let axisColor: UIColor
-    let requiredSpace: CGFloat // Width for Y-axis, Height for X-axis
+    public let labelCount: Int
+    public let centerAxisLabelsEnabled: Bool
+    public let labelFont: UIFont
+    public let labelColor: UIColor
+    public let axisColor: UIColor
+    public let requiredSpace: CGFloat // Width for Y-axis, Height for X-axis
     
     public init(
         labelCount: Int = 12,
