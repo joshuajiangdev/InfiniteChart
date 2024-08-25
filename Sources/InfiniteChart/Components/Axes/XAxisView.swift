@@ -16,10 +16,8 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
     var transformableAxes: [TransformableAxis] = [.horizontal]
     var transformerStream: AnyPublisher<AccelerateTransformer, Never>?
     
-
-    // TODO: Move a data model
-    private let labelCount = 12
-    private let centerAxisLabelsEnabled = true
+    var config: AxisConfig!
+    
     private var entries: [Double] = []
     private var centeredEntries: [Double] = []
     
@@ -68,10 +66,11 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
     }
     
     private func setupLabels() {
-        for _ in 0..<labelCount {
+        for _ in 0..<config.labelCount {
             let label = UILabel()
             label.textAlignment = .center
-            label.font = UIFont.systemFont(ofSize: 10)
+            label.font = config.labelFont
+            label.textColor = config.labelColor
             label.transform = CGAffineTransform(rotationAngle: CGFloat.pi / 2)
             addSubview(label)
             labels.append(label)
@@ -89,7 +88,7 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
     func computeAxisValues(min: Double, max: Double) {
         let range = abs(max - min)
         
-        let rawInterval = range / Double(labelCount)
+        let rawInterval = range / Double(config.labelCount)
         var interval = rawInterval.roundedToNextSignificant()
         // TODO: Use granularity
         interval = Swift.max(interval, 0.1)
@@ -102,11 +101,11 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
             interval = floor(10.0 * Double(intervalMagnitude))
         }
         
-        var n = centerAxisLabelsEnabled ? 1 : 0
+        var n = config.centerAxisLabelsEnabled ? 1 : 0
         
         var first = interval == 0.0 ? 0.0 : ceil(min / interval) * interval
 
-        if centerAxisLabelsEnabled
+        if config.centerAxisLabelsEnabled
         {
             first -= interval
         }
@@ -120,7 +119,7 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
 
         // Ensure stops contains at least n elements.
         entries.removeAll(keepingCapacity: true)
-        entries.reserveCapacity(labelCount)
+        entries.reserveCapacity(config.labelCount)
 
         let start = first, end = first + Double(n) * interval
 
@@ -139,7 +138,7 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
             decimals = 0
         }
 
-        if centerAxisLabelsEnabled
+        if config.centerAxisLabelsEnabled
         {
             let offset: Double = interval / 2.0
             centeredEntries = entries[..<n]
@@ -148,7 +147,7 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
     }
     
     private func updateLabels() {
-        let valuesToUse = centerAxisLabelsEnabled ? centeredEntries : entries
+        let valuesToUse = config.centerAxisLabelsEnabled ? centeredEntries : entries
         
         // Remove excess labels
         while labels.count > valuesToUse.count {
@@ -160,7 +159,8 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
         while labels.count < valuesToUse.count {
             let label = UILabel()
             label.textAlignment = .center
-            label.font = UIFont.systemFont(ofSize: 10)
+            label.font = config.labelFont
+            label.textColor = config.labelColor
             label.transform = CGAffineTransform(rotationAngle: CGFloat.pi / 2)
             addSubview(label)
             labels.append(label)
@@ -186,19 +186,15 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
             return
         }
         
-        
-    
-        let labelHeight: CGFloat = 50
-        
         for (index, label) in labels.enumerated() {
-            let value = centerAxisLabelsEnabled ? centeredEntries[index] : entries[index]
+            let value = config.centerAxisLabelsEnabled ? centeredEntries[index] : entries[index]
             let xPosition = transformer.pixelForValue(DoublePrecisionPoint(x: value, y: 0)).x
             
             label.frame = CGRect(
                 x: xPosition - label.intrinsicContentSize.height / 2,
                 y: 0,
                 width: label.intrinsicContentSize.height,
-                height: labelHeight
+                height: config.requiredSpace
             )
         }
     }

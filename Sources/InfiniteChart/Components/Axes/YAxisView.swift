@@ -17,9 +17,8 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
     var transformableAxes: [TransformableAxis] = [.vertical]
     var transformerStream: AnyPublisher<AccelerateTransformer, Never>?
     
-    // TODO: Move to a data model
-    private let labelCount = 12
-    private let centerAxisLabelsEnabled = true
+    var config: AxisConfig!
+    
     private var entries: [Double] = []
     private var centeredEntries: [Double] = []
     
@@ -65,10 +64,11 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
     }
     
     private func setupLabels() {
-        for _ in 0..<labelCount {
+        for _ in 0..<config.labelCount {
             let label = UILabel()
             label.textAlignment = .center
-            label.font = UIFont.systemFont(ofSize: 10)
+            label.font = config.labelFont
+            label.textColor = config.labelColor
             addSubview(label)
             labels.append(label)
         }
@@ -85,7 +85,7 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
     func computeAxisValues(min: Double, max: Double) {
         let range = abs(max - min)
         
-        let rawInterval = range / Double(labelCount)
+        let rawInterval = range / Double(config.labelCount)
         var interval = rawInterval.roundedToNextSignificant()
         // TODO: Use granularity
         interval = Swift.max(interval, 0.001)
@@ -98,11 +98,11 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
             interval = floor(10.0 * Double(intervalMagnitude))
         }
         
-        var n = centerAxisLabelsEnabled ? 1 : 0
+        var n = config.centerAxisLabelsEnabled ? 1 : 0
         
         var first = interval == 0.0 ? 0.0 : ceil(min / interval) * interval
 
-        if centerAxisLabelsEnabled
+        if config.centerAxisLabelsEnabled
         {
             first -= interval
         }
@@ -118,7 +118,7 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
 
         // Ensure stops contains at least n elements.
         entries.removeAll(keepingCapacity: true)
-        entries.reserveCapacity(labelCount)
+        entries.reserveCapacity(config.labelCount)
 
         let start = first, end = first + Double(n) * interval
 
@@ -137,7 +137,7 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
             decimals = 0
         }
 
-        if centerAxisLabelsEnabled
+        if config.centerAxisLabelsEnabled
         {
             let offset: Double = interval / 2.0
             centeredEntries = entries[..<n]
@@ -146,7 +146,7 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
     }
     
     private func updateLabels() {
-        let valuesToUse = centerAxisLabelsEnabled ? centeredEntries : entries
+        let valuesToUse = config.centerAxisLabelsEnabled ? centeredEntries : entries
         
         // Remove excess labels
         while labels.count > valuesToUse.count {
@@ -158,7 +158,8 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
         while labels.count < valuesToUse.count {
             let label = UILabel()
             label.textAlignment = .center
-            label.font = UIFont.systemFont(ofSize: 10)
+            label.font = config.labelFont
+            label.textColor = config.labelColor
             addSubview(label)
             labels.append(label)
         }
@@ -185,7 +186,7 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
         let labelWidth: CGFloat = 50
         
         for (index, label) in labels.enumerated() {
-            let value = centerAxisLabelsEnabled ? centeredEntries[index] : entries[index]
+            let value = config.centerAxisLabelsEnabled ? centeredEntries[index] : entries[index]
             let yPosition = transformer.pixelForValue(DoublePrecisionPoint(x: 0, y: value)).y
             
             label.frame = CGRect(
