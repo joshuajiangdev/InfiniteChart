@@ -21,9 +21,9 @@ final class LineRender {
         let transformer = transformerProvider.transformer
         
         var startX = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: 0, y: 0)).x.rounded(.up)
-        startX = dataProvider.getClosestXValue(to: startX, seekBelow: true) ?? startX
+        startX = dataProvider.getClosestXValue(to: startX, seekBelow: true, offset: 1) ?? startX
         var endX = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: transformerProvider.chartWidth, y: 0)).x.rounded(.down)
-        endX = dataProvider.getClosestXValue(to: endX, seekBelow: false) ?? endX
+        endX = dataProvider.getClosestXValue(to: endX, seekBelow: false, offset: 1) ?? endX
         let step: Double = 60*1000 // Adjust step size as needed
         
         var isFirstPoint = true

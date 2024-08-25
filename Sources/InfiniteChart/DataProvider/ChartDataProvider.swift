@@ -48,9 +48,12 @@ public protocol ChartDataProvider {
     /**
      Get nearest x value
      
-     - Parameter to: The target value we want to find the nearest x value to
+     - Parameter 
+        to: The target value we want to find the nearest x value to
+        seekBelow: boolean to indicate search to bottom or above
+        offset: how many extra data point to skip
 
      - Returns: The nearest x value to what we passed in
      */
-    func getClosestXValue(to xValue: Double, seekBelow: Bool) -> Double?
+    func getClosestXValue(to xValue: Double, seekBelow: Bool, offset: Int) -> Double?
 }
