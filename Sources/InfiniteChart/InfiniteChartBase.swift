@@ -7,7 +7,7 @@ public class InfiniteChartBase: UIView {
     
     // MARK: - Private Properties
     
-    let dataProvider: any ChartDataProvider
+    let dataProvider: any ChartDataProviderBase
     
     let xAxisConfig: AxisConfig
     let yAxisConfig: AxisConfig
@@ -33,11 +33,31 @@ public class InfiniteChartBase: UIView {
     lazy var xAxisView = XAxisView()
     lazy var yAxisView = YAxisView()
     lazy var chartBaseView = ChartBaseView()
-    lazy var lineRender = LineRender(dataProvider: dataProvider)
+    
+    lazy var lineRender: LineRender? = {
+        guard let dataProvider = dataProvider as? LineChartDataProvider else {
+            return nil
+        }
+        return LineRender(dataProvider: dataProvider)
+    }()
+    
+    lazy var candleStickRender: CandleStickLineRender? = {
+        guard let dataProvider = dataProvider as? CandleStickDataProvider else {
+            return nil
+        }
+        return CandleStickLineRender(dataProvider: dataProvider)
+    }()
+    
+    lazy var volumeRender: VolumeRender? = {
+        guard let dataProvider = dataProvider as? VolumeDataProvider else {
+            return nil
+        }
+        return VolumeRender(dataProvider: dataProvider)
+    }()
     
     public init(
         frame: CGRect, 
-        dataProvider: any ChartDataProvider, 
+        dataProvider: any ChartDataProviderBase, 
         xAxisConfig: AxisConfig = AxisConfig(), 
         yAxisConfig: AxisConfig = AxisConfig()
     ) {
@@ -47,7 +67,7 @@ public class InfiniteChartBase: UIView {
         
         super.init(frame: frame)
         
-        backgroundColor = .red
+        backgroundColor = .clear
 
         addSubview(xAxisView)
         addSubview(yAxisView)
@@ -105,12 +125,23 @@ public class InfiniteChartBase: UIView {
     }
     
     public override func draw(_ rect: CGRect) {
-        guard
-            let context = UIGraphicsGetCurrentContext()
-        else {
+        guard let context = UIGraphicsGetCurrentContext() else {
             return
         }
         
-        lineRender.drawSimpleLineChart(context: context, transformerProvider: transformerProvider)
+        let height = rect.height - xAxisConfig.requiredSpace
+        let width = rect.width - yAxisConfig.requiredSpace
+        
+        let mainChartRect = CGRect(x: 0, y: 0, width: width, height: height * 2/3)
+        let volumeChartRect = CGRect(x: 0, y: mainChartRect.maxY, width: width, height: height * 1/3)
+        
+        // Draw candlestick chart first (as background)
+        candleStickRender?.drawCandleStickChart(context: context, transformerProvider: transformerProvider)
+        
+        // Draw line chart on top
+//        lineRender?.drawSimpleLineChart(context: context, transformerProvider: transformerProvider)
+        
+        // Draw volume chart
+        volumeRender?.drawVolumeChart(context: context, transformerProvider: transformerProvider, rect: volumeChartRect)
     }
 }

@@ -35,7 +35,7 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
     
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .yellow
+        backgroundColor = .white
         setupGestureRecognizers()
         clipsToBounds = true
     }

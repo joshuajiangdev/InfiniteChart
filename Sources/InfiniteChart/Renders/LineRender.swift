@@ -8,9 +8,9 @@
 import UIKit
 
 final class LineRender {
-    let dataProvider: any ChartDataProvider
+    let dataProvider: any LineChartDataProvider
     
-    init(dataProvider: any ChartDataProvider) {
+    init(dataProvider: any LineChartDataProvider) {
         self.dataProvider = dataProvider
     }
     
@@ -48,8 +48,8 @@ final class LineRender {
         defer { context.restoreGState() }
         
         context.addPath(linePath)
-        context.setStrokeColor(UIColor.blue.cgColor) // Set line color
-        context.setLineWidth(2.0) // Set line width
+        context.setStrokeColor(UIColor.yellow.cgColor) // Change color to yellow for better visibility
+        context.setLineWidth(3.0) // Increase line width to 3.0
         context.strokePath()
     }
 }
