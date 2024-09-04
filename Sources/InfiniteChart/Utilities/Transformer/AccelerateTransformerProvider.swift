@@ -104,6 +104,7 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         // Need to make sure the x axis is indexed with 1 as stepper.
         
         let xDelta = chartWidth/newScaleX/60000
+        // Zoom and Scoll limit should be delegated to data provider
         if xDelta >= 300 {
             return
         }
