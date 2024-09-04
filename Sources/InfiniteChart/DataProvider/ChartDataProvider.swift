@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import Combine
 
 public struct DataRanges {
     public let chartXMin: Double
@@ -26,6 +27,8 @@ public protocol ChartDataProviderDelegate: AnyObject {
 }
 
 public protocol ChartDataProviderBase {
+    
+    var redrawStream: AnyPublisher<Void, Never> { get }
     
     var tranformerUpdatedDelegate: ChartDataProviderDelegate? { get }
     
@@ -49,6 +52,20 @@ public protocol ChartDataProviderBase {
      - Returns: The nearest x value to what we passed in
      */
     func getClosestXValue(to xValue: Double, seekBelow: Bool, offset: Int) -> Double?
+    
+    var technicalIndicators: [TechnicalIndicator] { get }
+}
+
+public struct TechnicalIndicator {
+    public let name: String
+    public let color: UIColor
+    public let dataPoints: [(x: Double, y: Double)]
+
+    public init(name: String, color: UIColor, dataPoints: [(x: Double, y: Double)]) {
+        self.name = name
+        self.color = color
+        self.dataPoints = dataPoints
+    }
 }
 
 public protocol LineChartDataProvider: ChartDataProviderBase {

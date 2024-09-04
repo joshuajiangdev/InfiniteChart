@@ -25,7 +25,12 @@ public class InfiniteChartBase: UIView {
     }()
     
     private func setupObservable() {
-        transformerProvider.$transformer.sink(receiveValue: { _ in
+        Publishers.CombineLatest(
+            transformerProvider.$transformer,
+            dataProvider.redrawStream
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(receiveValue: { _, _ in
             self.setNeedsDisplay()
         }).store(in: &disposeBag)
     }
@@ -55,6 +60,10 @@ public class InfiniteChartBase: UIView {
         return VolumeRender(dataProvider: dataProvider)
     }()
     
+    lazy var technicalIndicatorRender: TechnicalIndicatorRender = {
+        return TechnicalIndicatorRender(dataProvider: dataProvider)
+    }()
+
     public init(
         frame: CGRect, 
         dataProvider: any ChartDataProviderBase, 
@@ -143,5 +152,44 @@ public class InfiniteChartBase: UIView {
         
         // Draw volume chart
         volumeRender?.drawVolumeChart(context: context, transformerProvider: transformerProvider, rect: volumeChartRect)
+        
+        // Draw technical indicators
+        technicalIndicatorRender.drawTechnicalIndicators(context: context, transformerProvider: transformerProvider)
+    }
+}
+
+final class TechnicalIndicatorRender {
+    let dataProvider: any ChartDataProviderBase
+    
+    init(dataProvider: any ChartDataProviderBase) {
+        self.dataProvider = dataProvider
+    }
+    
+    func drawTechnicalIndicators(context: CGContext, transformerProvider: AccelerateTransformerProvider) {
+        let transformer = transformerProvider.transformer
+        
+        for indicator in dataProvider.technicalIndicators {
+            let linePath = CGMutablePath()
+            var isFirstPoint = true
+            
+            for point in indicator.dataPoints {
+                let pixelPoint = transformer.pixelForValue(DoublePrecisionPoint(x: point.x, y: point.y))
+                
+                if isFirstPoint {
+                    linePath.move(to: CGPoint(x: pixelPoint.x, y: pixelPoint.y))
+                    isFirstPoint = false
+                } else {
+                    linePath.addLine(to: CGPoint(x: pixelPoint.x, y: pixelPoint.y))
+                }
+            }
+            
+            context.saveGState()
+            defer { context.restoreGState() }
+            
+            context.addPath(linePath)
+            context.setStrokeColor(indicator.color.cgColor)
+            context.setLineWidth(2.0)
+            context.strokePath()
+        }
     }
 }

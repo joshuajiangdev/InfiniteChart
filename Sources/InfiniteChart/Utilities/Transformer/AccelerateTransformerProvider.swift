@@ -96,11 +96,17 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         let newTy = (1-scaleY)*valuePoint.y*valueToPixelMatrix[4] + valueToPixelMatrix[7]
 
         var newMatrix = valueToPixelMatrix
-        newMatrix[0] = valueToPixelMatrix[0] * scaleX
+        let newScaleX = valueToPixelMatrix[0] * scaleX
+        newMatrix[0] = newScaleX
         newMatrix[4] = valueToPixelMatrix[4] * scaleY
         newMatrix[6] = newTx
         newMatrix[7] = newTy
+        // Need to make sure the x axis is indexed with 1 as stepper.
         
+        let xDelta = chartWidth/newScaleX/60000
+        if xDelta >= 300 {
+            return
+        }
         valueToPixelMatrix = newMatrix
     }
     
