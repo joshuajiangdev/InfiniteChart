@@ -1,16 +1,17 @@
 # InfiniteChart
 
-A UIKit charting library distributed with Swift Package Manager. `Package.swift`
+A native macOS and iOS charting library distributed with Swift Package Manager. `Package.swift`
 defines the library and its tests; no `.xcodeproj` or checked-in workspace is
 required.
 
 ## Requirements
 
 - Swift 5.10 or later and an Xcode installation with the Apple platform SDKs.
-- iOS 13 or later, or Mac Catalyst 13 or later.
+- macOS 10.15 or later, iOS 13 or later, or Mac Catalyst 13 or later.
 
-The library uses UIKit, Combine, and Accelerate. Native macOS, watchOS, and tvOS
-are not supported.
+The library uses AppKit on macOS and UIKit on iOS and Mac Catalyst, with shared
+Core Graphics rendering, Combine publishers, and Accelerate transforms. watchOS
+and tvOS are not supported.
 
 ## Add the library to a package
 
@@ -32,10 +33,38 @@ Import the module with `import InfiniteChart`. The chart view is
 `InfiniteChartBase`; provide chart data through `ChartDataProviderBase` and its
 specialized protocols, and configure the axes with `AxisConfig`.
 
+`InfiniteChartBase` is an `NSView` on macOS and a `UIView` on iOS and Mac Catalyst.
+Add it to your native view hierarchy and set its frame or layout constraints.
+`ChartColor` and `ChartFont` resolve to `NSColor` and `NSFont` on macOS, or `UIColor`
+and `UIFont` on iOS. Existing iOS providers can continue using UIKit types.
+
+Drag to pan and pinch to zoom on either platform. macOS also supports mouse wheel
+and trackpad scrolling to pan. Gestures on an axis affect only that axis.
+Use `AxisConfig.labelFormatter` to display timestamps, prices, or other custom labels.
+
+## Examples
+
+The standalone [Examples package](Examples/README.md) includes native macOS and
+iOS BTC/USD charts with volume, SMA/EMA toggles, bundled historical candles, and
+public market-data refresh. It depends on this library through `.package(path: "..")`.
+
+```sh
+swift run --package-path Examples BTCMacExample
+./Examples/run-ios.sh
+```
+
 ## Build and test
 
-Run these commands from the repository root. Xcode's command-line tools read the
-Swift package directly and provide its `InfiniteChart` scheme.
+Run these commands from the repository root. Build and test native macOS with
+Swift Package Manager:
+
+```sh
+swift build
+swift test
+```
+
+For iOS and Mac Catalyst, Xcode's command-line tools read the Swift package
+directly and provide its `InfiniteChart` scheme.
 
 Inspect the package:
 
@@ -71,7 +100,8 @@ xcodebuild -scheme InfiniteChart \
     test CODE_SIGNING_ALLOWED=NO
 ```
 
-Plain `swift build` and `swift test` select the host macOS platform, which cannot
-import UIKit. Use an iOS Simulator or Mac Catalyst destination as shown above.
+The tests cover coordinate transforms, native view layout and resizing, pan and
+pinch gestures, axis labels, and chart rendering on both macOS and iOS. GitHub
+Actions runs both test suites and a Mac Catalyst build on pushes and pull requests.
 You can also open `Package.swift` directly in Xcode. Generated `.swiftpm`, build,
 and IDE files are ignored by Git.

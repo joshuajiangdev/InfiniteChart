@@ -1,7 +1,8 @@
-import UIKit
+import Foundation
+import CoreGraphics
 import Combine
 
-public class InfiniteChartBase: UIView {
+public class InfiniteChartBase: ChartPlatformView {
     
     var disposeBag = Set<AnyCancellable>()
     
@@ -19,7 +20,9 @@ public class InfiniteChartBase: UIView {
         }
         
         return AccelerateTransformerProvider(
-            size: bounds.size,
+            // Constraint-based layouts commonly create the view at zero size.
+            // Keep the initial transform invertible until the first real layout.
+            size: CGSize(width: max(bounds.width, 1), height: max(bounds.height, 1)),
             dataRanges: dataRanges
         )
     }()
@@ -30,14 +33,14 @@ public class InfiniteChartBase: UIView {
             dataProvider.redrawStream
         )
         .receive(on: DispatchQueue.main)
-        .sink(receiveValue: { _, _ in
-            self.setNeedsDisplay()
+        .sink(receiveValue: { [weak self] _, _ in
+            self?.requestChartDisplay()
         }).store(in: &disposeBag)
     }
     
-    lazy var xAxisView = XAxisView()
-    lazy var yAxisView = YAxisView()
-    lazy var chartBaseView = ChartBaseView()
+    lazy var xAxisView = XAxisView(frame: .zero)
+    lazy var yAxisView = YAxisView(frame: .zero)
+    lazy var chartBaseView = ChartBaseView(frame: .zero)
     
     lazy var lineRender: LineRender? = {
         guard let dataProvider = dataProvider as? LineChartDataProvider else {
@@ -76,7 +79,7 @@ public class InfiniteChartBase: UIView {
         
         super.init(frame: frame)
         
-        backgroundColor = .clear
+        configureChartAppearance(background: .clear)
 
         addSubview(xAxisView)
         addSubview(yAxisView)
@@ -86,35 +89,42 @@ public class InfiniteChartBase: UIView {
         setupSubViews()
     }
 
-    public override func layoutSubviews() {
-        super.layoutSubviews()
+    public override func layoutChartSubviews() {
+        super.layoutChartSubviews()
 
-        transformerProvider.setChartDimens(width: bounds.width - yAxisConfig.requiredSpace, height: bounds.height - xAxisConfig.requiredSpace)
-        transformerProvider.prepareMatrixValuePx(dataRanges: transformerProvider.initDataRanges)
+        let plotWidth = max(0, bounds.width - yAxisConfig.requiredSpace)
+        let plotHeight = max(0, bounds.height - xAxisConfig.requiredSpace)
         
         xAxisView.frame = CGRect(
             x: 0,
-            y: bounds.size.height - xAxisConfig.requiredSpace,
-            width: bounds.size.width - yAxisConfig.requiredSpace,
+            y: plotHeight,
+            width: plotWidth,
             height: xAxisConfig.requiredSpace
         )
         
         yAxisView.frame = CGRect(
-            x: bounds.size.width - yAxisConfig.requiredSpace,
+            x: plotWidth,
             y: 0,
             width: yAxisConfig.requiredSpace,
-            height: bounds.size.height - xAxisConfig.requiredSpace
+            height: plotHeight
         )
         
         chartBaseView.frame = CGRect(
             x: 0,
             y: 0,
-            width: bounds.size.width - yAxisConfig.requiredSpace,
-            height: bounds.size.height - xAxisConfig.requiredSpace
+            width: plotWidth,
+            height: plotHeight
         )
+
+        if plotWidth > 0, plotHeight > 0,
+           plotWidth != transformerProvider.chartWidth || plotHeight != transformerProvider.chartHeight {
+            transformerProvider.setChartDimens(width: plotWidth, height: plotHeight)
+            transformerProvider.prepareMatrixValuePx(dataRanges: transformerProvider.initDataRanges)
+        }
+        requestChartDisplay()
     }
     
-    required init?(coder: NSCoder) {
+    public required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
@@ -134,12 +144,14 @@ public class InfiniteChartBase: UIView {
     }
     
     public override func draw(_ rect: CGRect) {
-        guard let context = UIGraphicsGetCurrentContext() else {
+        guard let context = currentChartGraphicsContext() else {
             return
         }
         
-        let height = rect.height - xAxisConfig.requiredSpace
-        let width = rect.width - yAxisConfig.requiredSpace
+        // AppKit can request only a dirty subregion; chart geometry uses the full bounds.
+        let height = bounds.height - xAxisConfig.requiredSpace
+        let width = bounds.width - yAxisConfig.requiredSpace
+        guard width > 0, height > 0 else { return }
         
         let mainChartRect = CGRect(x: 0, y: 0, width: width, height: height * 2/3)
         let volumeChartRect = CGRect(x: 0, y: mainChartRect.maxY, width: width, height: height * 1/3)

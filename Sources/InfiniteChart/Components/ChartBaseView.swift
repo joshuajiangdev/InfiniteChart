@@ -5,10 +5,10 @@
 //  Created by Joshua Jiang on 8/21/24.
 //
 
-import UIKit
+import Foundation
 import Combine
 
-class ChartBaseView: UIView, Transformable, Pannable, Pinchable {
+class ChartBaseView: ChartPlatformView, Transformable, Pannable, Pinchable {
     
     // MARK: - Transformable
     var transformerStream: AnyPublisher<AccelerateTransformer, Never>?
@@ -27,9 +27,8 @@ class ChartBaseView: UIView, Transformable, Pannable, Pinchable {
     
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .clear
+        configureChartAppearance(background: .clear)
         setupGestureRecognizers()
-        clipsToBounds = true
     }
     
     required init?(coder: NSCoder) {
@@ -37,19 +36,17 @@ class ChartBaseView: UIView, Transformable, Pannable, Pinchable {
     }
     
     private func setupGestureRecognizers() {
-        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
-        panGesture.maximumNumberOfTouches = 1
-        addGestureRecognizer(panGesture)
-        
-        let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinchGesture(_:)))
-        addGestureRecognizer(pinchGesture)
+        installChartGestures(
+            panAction: #selector(handlePanGesture(_:)),
+            pinchAction: #selector(handlePinchGesture(_:))
+        )
     }
     
-    @objc func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
+    @objc func handlePanGesture(_ gesture: ChartPanGestureRecognizer) {
         self.panGestureHandler(gesture)
     }
 
-    @objc func handlePinchGesture(_ gesture: UIPinchGestureRecognizer) {
+    @objc func handlePinchGesture(_ gesture: ChartPinchGestureRecognizer) {
         self.pinchGestureHandler(gesture)
     }
 }

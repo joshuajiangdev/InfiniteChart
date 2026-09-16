@@ -5,7 +5,7 @@
 //  Created by Joshua Jiang on 8/24/24.
 //
 
-import UIKit
+import CoreGraphics
 
 class CandleStickLineRender {
     let dataProvider: any CandleStickDataProvider
@@ -23,7 +23,7 @@ class CandleStickLineRender {
         endX = dataProvider.getClosestXValue(to: endX, seekBelow: false, offset: 1) ?? endX
         let step: Double = 60*1000 // Adjust step size as needed
         
-        for x in stride(from: startX, to: endX, by: step) {
+        for x in stride(from: startX, through: endX, by: step) {
             guard let candleStick = dataProvider.getCandleStickDataPoint(for: x) else {
                 continue
             }

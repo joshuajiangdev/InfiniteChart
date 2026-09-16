@@ -5,7 +5,7 @@
 //  Created by Joshua Jiang on 8/22/24.
 //
 
-import UIKit
+import CoreGraphics
 
 final class LineRender {
     let dataProvider: any LineChartDataProvider
@@ -28,7 +28,7 @@ final class LineRender {
         
         var isFirstPoint = true
         
-        for x in stride(from: startX, to: endX, by: step) {
+        for x in stride(from: startX, through: endX, by: step) {
             guard let y = dataProvider.getYValue(for: x) else {
                 continue
             }
@@ -48,7 +48,7 @@ final class LineRender {
         defer { context.restoreGState() }
         
         context.addPath(linePath)
-        context.setStrokeColor(UIColor.yellow.cgColor) // Change color to yellow for better visibility
+        context.setStrokeColor(ChartColor.yellow.cgColor) // Change color to yellow for better visibility
         context.setLineWidth(3.0) // Increase line width to 3.0
         context.strokePath()
     }

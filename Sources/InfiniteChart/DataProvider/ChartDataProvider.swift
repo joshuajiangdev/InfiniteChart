@@ -5,7 +5,7 @@
 //  Created by Joshua Jiang on 8/24/24.
 //
 
-import UIKit
+import Foundation
 import Combine
 
 public struct DataRanges {
@@ -58,10 +58,10 @@ public protocol ChartDataProviderBase {
 
 public struct TechnicalIndicator {
     public let name: String
-    public let color: UIColor
+    public let color: ChartColor
     public let dataPoints: [(x: Double, y: Double)]
 
-    public init(name: String, color: UIColor, dataPoints: [(x: Double, y: Double)]) {
+    public init(name: String, color: ChartColor, dataPoints: [(x: Double, y: Double)]) {
         self.name = name
         self.color = color
         self.dataPoints = dataPoints
@@ -85,9 +85,9 @@ public struct CandleStickDataPoint {
     public let low: Double
     public let open: Double
     public let close: Double
-    public let color: UIColor
+    public let color: ChartColor
     
-    public init(high: Double, low: Double, open: Double, close: Double, color: UIColor) {
+    public init(high: Double, low: Double, open: Double, close: Double, color: ChartColor) {
         self.high = high
         self.low = low
         self.open = open
@@ -109,5 +109,5 @@ public protocol CandleStickDataProvider: ChartDataProviderBase {
 }
 
 public protocol VolumeDataProvider: ChartDataProviderBase {
-    func getVolumeValueAndColor(for xValue: Double) -> (volume: Double, color: UIColor)?
+    func getVolumeValueAndColor(for xValue: Double) -> (volume: Double, color: ChartColor)?
 }

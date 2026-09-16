@@ -5,7 +5,7 @@
 //  Created by Joshua Jiang on 8/25/24.
 //
 
-import UIKit
+import CoreGraphics
 
 class VolumeRender {
     let dataProvider: any VolumeDataProvider
@@ -25,7 +25,7 @@ class VolumeRender {
         
         // Calculate max volume in visible range
         var maxVolume: Double = 0
-        for x in stride(from: startX, to: endX, by: step) {
+        for x in stride(from: startX, through: endX, by: step) {
             if let (volume, _) = dataProvider.getVolumeValueAndColor(for: x) {
                 maxVolume = max(maxVolume, volume)
             }
@@ -36,7 +36,7 @@ class VolumeRender {
         let barWidth: CGFloat = 2.0
         let volumeHeight = rect.height
         
-        for x in stride(from: startX, to: endX, by: step) {
+        for x in stride(from: startX, through: endX, by: step) {
             guard let (volume, color) = dataProvider.getVolumeValueAndColor(for: x) else { continue }
             
             let startPoint = transformer.pixelForValue(DoublePrecisionPoint(x: x, y: 0))

@@ -5,10 +5,10 @@
 //  Created by Joshua Jiang on 8/21/24.
 //
 
-import UIKit
+import Foundation
 import Combine
 
-class YAxisView: UIView, Transformable, Pannable, Pinchable {
+class YAxisView: ChartPlatformView, Transformable, Pannable, Pinchable {
     
     // MARK: - Transformable
     
@@ -22,7 +22,7 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
     private var entries: [Double] = []
     private var centeredEntries: [Double] = []
     
-    private var labels: [UILabel] = []
+    private var labels: [AxisLabel] = []
     
     var disposeBag = Set<AnyCancellable>()
     private var currentTransformer: TransformerType?
@@ -35,9 +35,8 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
     
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .white
+        configureChartAppearance(background: .white)
         setupGestureRecognizers()
-        clipsToBounds = true
     }
     
     required init?(coder: NSCoder) {
@@ -45,12 +44,10 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
     }
     
     private func setupGestureRecognizers() {
-        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
-        panGesture.maximumNumberOfTouches = 1
-        addGestureRecognizer(panGesture)
-        
-        let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinchGesture(_:)))
-        addGestureRecognizer(pinchGesture)
+        installChartGestures(
+            panAction: #selector(handlePanGesture(_:)),
+            pinchAction: #selector(handlePinchGesture(_:))
+        )
     }
     
     func setup() {
@@ -65,8 +62,7 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
     
     private func setupLabels() {
         for _ in 0..<config.labelCount {
-            let label = UILabel()
-            label.textAlignment = .center
+            let label = AxisLabel(frame: .zero)
             label.font = config.labelFont
             label.textColor = config.labelColor
             addSubview(label)
@@ -79,7 +75,7 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
         let max = transformer.valueForTouchPoint(CGPoint(x: 0, y: 0)).y
         computeAxisValues(min: min, max: max)
         updateLabels()
-        setNeedsLayout()
+        requestChartLayout()
     }
     
     func computeAxisValues(min: Double, max: Double) {
@@ -156,8 +152,7 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
         
         // Add more labels if needed
         while labels.count < valuesToUse.count {
-            let label = UILabel()
-            label.textAlignment = .center
+            let label = AxisLabel(frame: .zero)
             label.font = config.labelFont
             label.textColor = config.labelColor
             addSubview(label)
@@ -166,13 +161,12 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
         
         // Update label texts
         for (index, label) in labels.enumerated() {
-            label.text = String(format: "%.2f", valuesToUse[index])
-            label.sizeToFit()
+            label.text = config.labelFormatter?(valuesToUse[index]) ?? String(format: "%.2f", valuesToUse[index])
         }
     }
     
-    override func layoutSubviews() {
-        super.layoutSubviews()
+    override func layoutChartSubviews() {
+        super.layoutChartSubviews()
         
         guard let transformer = currentTransformer else { return }
         
@@ -181,7 +175,6 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
             // The bounds have changed, handle the change here
             oldBounds = self.bounds
             setupAxis(transformer: transformer)
-            return
         }
         let labelWidth: CGFloat = 50
         
@@ -198,11 +191,11 @@ class YAxisView: UIView, Transformable, Pannable, Pinchable {
         }
     }
     
-    @objc func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
+    @objc func handlePanGesture(_ gesture: ChartPanGestureRecognizer) {
         self.panGestureHandler(gesture)
     }
 
-    @objc func handlePinchGesture(_ gesture: UIPinchGestureRecognizer) {
+    @objc func handlePinchGesture(_ gesture: ChartPinchGestureRecognizer) {
         self.pinchGestureHandler(gesture)
     }
 }

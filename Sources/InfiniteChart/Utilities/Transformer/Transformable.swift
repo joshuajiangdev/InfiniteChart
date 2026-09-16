@@ -12,6 +12,7 @@ enum TransformableAxis {
     case vertical
 }
 
+@MainActor
 protocol Transformable {
     associatedtype TransformerType: Transformer
     

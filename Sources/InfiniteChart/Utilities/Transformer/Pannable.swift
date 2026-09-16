@@ -5,16 +5,24 @@
 //  Created by Joshua Jiang on 8/21/24.
 //
 
-import UIKit
+import Foundation
 
-protocol Pannable: Transformable, UIView {
-    func panGestureHandler(_ gesture: UIPanGestureRecognizer)
+@MainActor
+protocol Pannable: Transformable, ChartPlatformView {
+    func panGestureHandler(_ gesture: ChartPanGestureRecognizer)
     var lastDragPoint: CGPoint? { get set }
 }
 
+@MainActor
 extension Pannable {
-    func panGestureHandler(_ gesture: UIPanGestureRecognizer) {
-        guard let transformerProvider = transformerProvider else { return }
+    func pan(by delta: CGPoint) {
+        transformerProvider?.translate(delta: CGPoint(
+            x: transformableAxes.contains(.horizontal) ? delta.x : 0,
+            y: transformableAxes.contains(.vertical) ? delta.y : 0
+        ))
+    }
+
+    func panGestureHandler(_ gesture: ChartPanGestureRecognizer) {
         
         switch gesture.state {
         case .began:
@@ -25,14 +33,11 @@ extension Pannable {
             
             let currentPoint = gesture.location(in: self)
             
-            let deltaX = transformableAxes.contains(.horizontal) ? currentPoint.x - lastDragPoint.x : 0
-            let deltaY = transformableAxes.contains(.vertical) ? currentPoint.y - lastDragPoint.y : 0
-            
-            transformerProvider.translate(delta: CGPoint(x: deltaX, y: deltaY))
+            pan(by: CGPoint(x: currentPoint.x - lastDragPoint.x, y: currentPoint.y - lastDragPoint.y))
             
             self.lastDragPoint = currentPoint
             
-        case .ended, .cancelled:
+        case .ended, .cancelled, .failed:
             lastDragPoint = nil
             
         default:

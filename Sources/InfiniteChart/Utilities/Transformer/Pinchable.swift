@@ -5,21 +5,24 @@
 //  Created by Joshua Jiang on 8/21/24.
 //
 
-import UIKit
+import Foundation
 
-protocol Pinchable: Transformable, UIView {
-    func pinchGestureHandler(_ gesture: UIPinchGestureRecognizer)
+@MainActor
+protocol Pinchable: Transformable, ChartPlatformView {
+    func pinchGestureHandler(_ gesture: ChartPinchGestureRecognizer)
 }
 
+@MainActor
 extension Pinchable {
-    func pinchGestureHandler(_ gesture: UIPinchGestureRecognizer) {
+    func pinchGestureHandler(_ gesture: ChartPinchGestureRecognizer) {
         guard let transformerProvider = transformerProvider else { return }
         let location = gesture.location(in: self)
         
         switch gesture.state {
         case .changed:
-            let scaleX = transformableAxes.contains(.horizontal) ? gesture.scale : 1.0
-            let scaleY = transformableAxes.contains(.vertical) ? gesture.scale : 1.0
+            guard gesture.chartScale.isFinite, gesture.chartScale > 0 else { return }
+            let scaleX = transformableAxes.contains(.horizontal) ? gesture.chartScale : 1.0
+            let scaleY = transformableAxes.contains(.vertical) ? gesture.chartScale : 1.0
             
             let centerX = if transformableAxes.count == 1 {
                 transformableAxes.contains(.horizontal) ? bounds.width / 2 : 0
@@ -34,7 +37,7 @@ extension Pinchable {
             }
             
             transformerProvider.zoom(scaleX: scaleX, scaleY: scaleY, x: centerX, y: centerY)
-            gesture.scale = 1.0
+            gesture.chartScale = 1.0
         default:
             break
         }
