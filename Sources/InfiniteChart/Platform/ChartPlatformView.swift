@@ -1,6 +1,8 @@
 #if canImport(UIKit)
 import UIKit
 
+/// The native view superclass used by the chart's platform adapter.
+public typealias ChartNativeView = UIView
 /// The native color type used by chart configuration and data providers.
 public typealias ChartColor = UIColor
 /// The native font type used by chart axis labels.
@@ -8,40 +10,11 @@ public typealias ChartFont = UIFont
 
 typealias ChartPanGestureRecognizer = UIPanGestureRecognizer
 typealias ChartPinchGestureRecognizer = UIPinchGestureRecognizer
-
-/// Bridges native view layout to the shared chart implementation.
-open class ChartPlatformView: UIView {
-    open func layoutChartSubviews() {}
-
-    open override func layoutSubviews() {
-        super.layoutSubviews()
-        layoutChartSubviews()
-    }
-
-    func configureChartAppearance(background: ChartColor) {
-        backgroundColor = background
-        isOpaque = false
-        clipsToBounds = true
-    }
-
-    func requestChartLayout() { setNeedsLayout() }
-    func requestChartDisplay() { setNeedsDisplay() }
-}
-
-@MainActor
-func currentChartGraphicsContext() -> CGContext? {
-    UIGraphicsGetCurrentContext()
-}
-
-extension ChartPinchGestureRecognizer {
-    var chartScale: CGFloat {
-        get { scale }
-        set { scale = newValue }
-    }
-}
 #elseif canImport(AppKit)
 import AppKit
 
+/// The native view superclass used by the chart's platform adapter.
+public typealias ChartNativeView = NSView
 /// The native color type used by chart configuration and data providers.
 public typealias ChartColor = NSColor
 /// The native font type used by chart axis labels.
@@ -49,27 +22,65 @@ public typealias ChartFont = NSFont
 
 typealias ChartPanGestureRecognizer = NSPanGestureRecognizer
 typealias ChartPinchGestureRecognizer = NSMagnificationGestureRecognizer
+#endif
 
-/// An AppKit view with the same top-left origin as the chart's coordinates.
-open class ChartPlatformView: NSView {
-    open override var isFlipped: Bool { true }
-
+/// Bridges native view behavior to the shared chart implementation.
+open class ChartPlatformView: ChartNativeView {
     open func layoutChartSubviews() {}
+
+    #if canImport(UIKit)
+    open override func layoutSubviews() {
+        super.layoutSubviews()
+        layoutChartSubviews()
+    }
+    #elseif canImport(AppKit)
+    // Match the chart's top-left coordinate origin on macOS.
+    open override var isFlipped: Bool { true }
 
     open override func layout() {
         super.layout()
         layoutChartSubviews()
     }
+    #endif
 
     func configureChartAppearance(background: ChartColor) {
+        #if canImport(UIKit)
+        backgroundColor = background
+        isOpaque = false
+        clipsToBounds = true
+        #elseif canImport(AppKit)
         wantsLayer = true
         layer?.backgroundColor = background.cgColor
         layer?.masksToBounds = true
+        #endif
     }
 
-    func requestChartLayout() { needsLayout = true }
-    func requestChartDisplay() { needsDisplay = true }
+    func requestChartLayout() {
+        #if canImport(UIKit)
+        setNeedsLayout()
+        #elseif canImport(AppKit)
+        needsLayout = true
+        #endif
+    }
 
+    func requestChartDisplay() {
+        #if canImport(UIKit)
+        setNeedsDisplay()
+        #elseif canImport(AppKit)
+        needsDisplay = true
+        #endif
+    }
+
+    func installChartGestures(panAction: Selector, pinchAction: Selector) {
+        let pan = ChartPanGestureRecognizer(target: self, action: panAction)
+        #if canImport(UIKit)
+        pan.maximumNumberOfTouches = 1
+        #endif
+        addGestureRecognizer(pan)
+        addGestureRecognizer(ChartPinchGestureRecognizer(target: self, action: pinchAction))
+    }
+
+    #if canImport(AppKit) && !canImport(UIKit)
     open override func scrollWheel(with event: NSEvent) {
         guard let pannable = self as? any Pannable else {
             super.scrollWheel(with: event)
@@ -82,28 +93,33 @@ open class ChartPlatformView: NSView {
             y: event.scrollingDeltaY * pointsPerUnit
         ))
     }
+    #endif
 }
 
 @MainActor
 func currentChartGraphicsContext() -> CGContext? {
+    #if canImport(UIKit)
+    UIGraphicsGetCurrentContext()
+    #elseif canImport(AppKit)
     NSGraphicsContext.current?.cgContext
+    #endif
 }
 
 extension ChartPinchGestureRecognizer {
     var chartScale: CGFloat {
-        get { 1 + magnification }
-        set { magnification = newValue - 1 }
-    }
-}
-#endif
-
-extension ChartPlatformView {
-    func installChartGestures(panAction: Selector, pinchAction: Selector) {
-        let pan = ChartPanGestureRecognizer(target: self, action: panAction)
-        #if canImport(UIKit)
-        pan.maximumNumberOfTouches = 1
-        #endif
-        addGestureRecognizer(pan)
-        addGestureRecognizer(ChartPinchGestureRecognizer(target: self, action: pinchAction))
+        get {
+            #if canImport(UIKit)
+            scale
+            #elseif canImport(AppKit)
+            1 + magnification
+            #endif
+        }
+        set {
+            #if canImport(UIKit)
+            scale = newValue
+            #elseif canImport(AppKit)
+            magnification = newValue - 1
+            #endif
+        }
     }
 }
