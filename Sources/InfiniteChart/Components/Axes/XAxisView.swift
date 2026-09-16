@@ -5,10 +5,10 @@
 //  Created by Joshua Jiang on 8/18/24.
 //
 
-import UIKit
+import Foundation
 import Combine
 
-class XAxisView: UIView, Transformable, Pannable, Pinchable {
+class XAxisView: ChartPlatformView, Transformable, Pannable, Pinchable {
     // MARK: - Transformable
     
     typealias TransformerType = AccelerateTransformer
@@ -21,13 +21,13 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
     private var entries: [Double] = []
     private var centeredEntries: [Double] = []
     
-    private var labels: [UILabel] = []
+    private var labels: [AxisLabel] = []
     
     var disposeBag = Set<AnyCancellable>()
     private var currentTransformer: TransformerType?
     
-    private var panGestureRecognizer: UIPanGestureRecognizer!
-    private var pinchGestureRecognizer: UIPinchGestureRecognizer!
+    private var panGestureRecognizer: ChartPanGestureRecognizer!
+    private var pinchGestureRecognizer: ChartPinchGestureRecognizer!
     
     // MARK: - Pannable
     
@@ -37,9 +37,8 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
     
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .white
+        configureChartAppearance(background: .white)
         setupGestureRecognizers()
-        clipsToBounds = true
     }
     
     required init?(coder: NSCoder) {
@@ -47,12 +46,10 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
     }
     
     private func setupGestureRecognizers() {
-        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
-        panGesture.maximumNumberOfTouches = 1
-        addGestureRecognizer(panGesture)
-        
-        let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinchGesture(_:)))
-        addGestureRecognizer(pinchGesture)
+        installChartGestures(
+            panAction: #selector(handlePanGesture(_:)),
+            pinchAction: #selector(handlePinchGesture(_:))
+        )
     }
     
     func setup() {
@@ -67,11 +64,10 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
     
     private func setupLabels() {
         for _ in 0..<config.labelCount {
-            let label = UILabel()
-            label.textAlignment = .center
+            let label = AxisLabel(frame: .zero)
             label.font = config.labelFont
             label.textColor = config.labelColor
-            label.transform = CGAffineTransform(rotationAngle: CGFloat.pi / 2)
+            label.rotationAngle = .pi / 2
             addSubview(label)
             labels.append(label)
         }
@@ -82,7 +78,7 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
         let max = transformer.valueForTouchPoint(CGPoint(x: bounds.width, y: 0)).x
         computeAxisValues(min: min, max: max)
         updateLabels()
-        setNeedsLayout()
+        requestChartLayout()
     }
     
     func computeAxisValues(min: Double, max: Double) {
@@ -157,24 +153,22 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
         
         // Add more labels if needed
         while labels.count < valuesToUse.count {
-            let label = UILabel()
-            label.textAlignment = .center
+            let label = AxisLabel(frame: .zero)
             label.font = config.labelFont
             label.textColor = config.labelColor
-            label.transform = CGAffineTransform(rotationAngle: CGFloat.pi / 2)
+            label.rotationAngle = .pi / 2
             addSubview(label)
             labels.append(label)
         }
         
         // Update label texts
         for (index, label) in labels.enumerated() {
-            label.text = String(format: "%.2f", valuesToUse[index])
-            label.sizeToFit()
+            label.text = config.labelFormatter?(valuesToUse[index]) ?? String(format: "%.2f", valuesToUse[index])
         }
     }
     
-    override func layoutSubviews() {
-        super.layoutSubviews()
+    override func layoutChartSubviews() {
+        super.layoutChartSubviews()
         
         guard let transformer = currentTransformer else { return }
         
@@ -183,7 +177,6 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
             // The bounds have changed, handle the change here
             oldBounds = self.bounds
             setupAxis(transformer: transformer)
-            return
         }
         
         for (index, label) in labels.enumerated() {
@@ -199,11 +192,11 @@ class XAxisView: UIView, Transformable, Pannable, Pinchable {
         }
     }
     
-    @objc func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
+    @objc func handlePanGesture(_ gesture: ChartPanGestureRecognizer) {
         self.panGestureHandler(gesture)
     }
 
-    @objc func handlePinchGesture(_ gesture: UIPinchGestureRecognizer) {
+    @objc func handlePinchGesture(_ gesture: ChartPinchGestureRecognizer) {
         self.pinchGestureHandler(gesture)
     }
 }

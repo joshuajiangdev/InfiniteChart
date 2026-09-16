@@ -5,12 +5,17 @@
 //  Created by Joshua Jiang on 8/21/24.
 //
 
-import UIKit
+import CoreGraphics
 import Accelerate
 
 public struct DoublePrecisionPoint: Equatable {
-    let x: Double
-    let y: Double
+    public let x: Double
+    public let y: Double
+
+    public init(x: Double, y: Double) {
+        self.x = x
+        self.y = y
+    }
 }
 
 public protocol Transformer: Equatable {

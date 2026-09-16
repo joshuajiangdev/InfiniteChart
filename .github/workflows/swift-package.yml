@@ -1,0 +1,62 @@
+name: Swift Package
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: ${{ matrix.platform }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macOS, iOS]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Test native macOS
+        if: matrix.platform == 'macOS'
+        run: swift test
+
+      - name: Test standalone BTC examples
+        if: matrix.platform == 'macOS'
+        run: swift test --package-path Examples
+
+      - name: Select an available iPhone simulator
+        if: matrix.platform == 'iOS'
+        id: simulator
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import subprocess
+
+          devices = json.loads(subprocess.check_output(
+              ["xcrun", "simctl", "list", "devices", "available", "--json"]
+          ))["devices"]
+          iphones = [device for runtime, group in devices.items()
+                     if ".iOS-" in runtime for device in group
+                     if device.get("isAvailable") and device["name"].startswith("iPhone")]
+          if not iphones:
+              raise SystemExit("No available iPhone simulator is installed.")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"udid={iphones[0]['udid']}", file=output)
+          PY
+
+      - name: Test iOS Simulator
+        if: matrix.platform == 'iOS'
+        env:
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          xcodebuild -scheme InfiniteChart \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath .build/ios \
+            test CODE_SIGNING_ALLOWED=NO
+
+      - name: Build standalone BTC iOS example
+        if: matrix.platform == 'iOS'
+        run: ./Examples/run-ios.sh --build-only

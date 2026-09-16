@@ -5,8 +5,8 @@
 //  Created by Joshua Jiang on 8/20/24.
 //
 
-import UIKit
 import Foundation
+import CoreGraphics
 import Accelerate
 import Combine
 
