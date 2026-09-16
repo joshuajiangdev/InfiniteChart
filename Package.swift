@@ -7,7 +7,6 @@ let package = Package(
     platforms: [
         .macOS(.v10_15),
         .iOS(.v13),
-        .macCatalyst(.v13),
     ],
     products: [
         .library(

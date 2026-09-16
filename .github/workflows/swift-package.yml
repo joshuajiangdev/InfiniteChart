@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macOS, iOS, Mac Catalyst]
+        platform: [macOS, iOS]
     steps:
       - uses: actions/checkout@v7
 
@@ -60,11 +60,3 @@ jobs:
       - name: Build standalone BTC iOS example
         if: matrix.platform == 'iOS'
         run: ./Examples/run-ios.sh --build-only
-
-      - name: Build Mac Catalyst
-        if: matrix.platform == 'Mac Catalyst'
-        run: |
-          xcodebuild -scheme InfiniteChart \
-            -destination 'generic/platform=macOS,variant=Mac Catalyst' \
-            -derivedDataPath .build/catalyst \
-            build CODE_SIGNING_ALLOWED=NO

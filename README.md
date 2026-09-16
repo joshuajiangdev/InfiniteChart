@@ -7,9 +7,9 @@ required.
 ## Requirements
 
 - Swift 5.10 or later and an Xcode installation with the Apple platform SDKs.
-- macOS 10.15 or later, iOS 13 or later, or Mac Catalyst 13 or later.
+- macOS 10.15 or later, or iOS 13 or later.
 
-The library uses AppKit on macOS and UIKit on iOS and Mac Catalyst, with shared
+The library uses AppKit on macOS and UIKit on iOS, with shared
 Core Graphics rendering, Combine publishers, and Accelerate transforms. watchOS
 and tvOS are not supported.
 
@@ -33,7 +33,7 @@ Import the module with `import InfiniteChart`. The chart view is
 `InfiniteChartBase`; provide chart data through `ChartDataProviderBase` and its
 specialized protocols, and configure the axes with `AxisConfig`.
 
-`InfiniteChartBase` is an `NSView` on macOS and a `UIView` on iOS and Mac Catalyst.
+`InfiniteChartBase` is an `NSView` on macOS and a `UIView` on iOS.
 Add it to your native view hierarchy and set its frame or layout constraints.
 `ChartColor` and `ChartFont` resolve to `NSColor` and `NSFont` on macOS, or `UIColor`
 and `UIFont` on iOS. Existing iOS providers can continue using UIKit types.
@@ -63,7 +63,7 @@ swift build
 swift test
 ```
 
-For iOS and Mac Catalyst, Xcode's command-line tools read the Swift package
+For iOS, Xcode's command-line tools read the Swift package
 directly and provide its `InfiniteChart` scheme.
 
 Inspect the package:
@@ -81,15 +81,6 @@ xcodebuild -scheme InfiniteChart \
     build CODE_SIGNING_ALLOWED=NO
 ```
 
-Build for Mac Catalyst:
-
-```sh
-xcodebuild -scheme InfiniteChart \
-    -destination 'generic/platform=macOS,variant=Mac Catalyst' \
-    -derivedDataPath .build/catalyst \
-    build CODE_SIGNING_ALLOWED=NO
-```
-
 Run the XCTest suite on an installed iOS Simulator. Find its UUID with
 `xcrun simctl list devices available`, then substitute it for `SIMULATOR_UUID`:
 
@@ -102,6 +93,6 @@ xcodebuild -scheme InfiniteChart \
 
 The tests cover coordinate transforms, native view layout and resizing, pan and
 pinch gestures, axis labels, and chart rendering on both macOS and iOS. GitHub
-Actions runs both test suites and a Mac Catalyst build on pushes and pull requests.
+Actions runs both test suites on pushes and pull requests.
 You can also open `Package.swift` directly in Xcode. Generated `.swiftpm`, build,
 and IDE files are ignored by Git.
