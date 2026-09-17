@@ -42,11 +42,41 @@ Drag to pan and pinch to zoom on either platform. macOS also supports mouse whee
 and trackpad scrolling to pan. Gestures on an axis affect only that axis.
 Use `AxisConfig.labelFormatter` to display timestamps, prices, or other custom labels.
 
+Applications can observe `chart.onViewportChange` to choose a data resolution:
+
+```swift
+chart.onViewportChange = { [weak provider] change in
+    // Application code chooses, loads, or aggregates data for this viewport.
+    provider?.updateViewport(change.viewport)
+}
+```
+
+The callback reports the visible X/Y ranges, plot size, and change reason. The
+application owns detail selection and updates its data provider; replacing the
+displayed data and publishing a redraw preserves the viewport. `updateViewport`
+above is an application method, demonstrated by the BTC example provider.
+Use `chart.setVisibleXRange(...)` for programmatic time-range changes,
+`chart.setVisibleYRange(...)` to fit prices without changing the horizontal range,
+`chart.resetViewport()` to restore the initial ranges, and `chart.xSpanLimits`
+to configure zoom limits in your data's X units.
+
+For variable intervals or irregular samples, also adopt `IndexedChartDataProvider`.
+Return the actual sorted, unique X values in the requested inclusive range from
+`getXValues(in:)`, and provide `nominalXStep` in the same X units for bar sizing.
+The renderer then uses those samples instead of the legacy one-minute step.
+Viewport notifications arrive on the main queue, coalesce rapid changes, and are
+not emitted for data-only redraws. Applications loading data asynchronously should
+discard superseded responses and preserve the latest viewport when applying data.
+
 ## Examples
 
 The standalone [Examples package](Examples/README.md) includes native macOS and
 iOS BTC/USD charts with volume, SMA/EMA toggles, bundled historical candles, and
-public market-data refresh. It depends on this library through `.package(path: "..")`.
+public market-data refresh. Both demonstrate application-owned transitions
+between remotely fetched 1m, 5m, and 15m candles when zooming. Coarser resolutions
+load longer history, and panning beyond cached data requests another window.
+Zoom buttons, loading/retry states, and a live interval label make the transitions
+visible. It depends on this library through `.package(path: "..")`.
 
 ```sh
 swift run --package-path Examples BTCMacExample

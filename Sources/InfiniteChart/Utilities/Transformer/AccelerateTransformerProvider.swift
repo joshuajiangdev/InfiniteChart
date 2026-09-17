@@ -16,6 +16,11 @@ final public class AccelerateTransformerProvider: TransformerProviding {
     
     private(set) var chartWidth: CGFloat = 0
     private(set) var chartHeight: CGFloat = 0
+
+    /// Optional horizontal span limits, expressed in the provider's X units.
+    public var xSpanLimits: ClosedRange<Double>?
+
+    let viewportChanges = PassthroughSubject<ChartViewportChange.Reason, Never>()
     
     private(set) var valueToPixelMatrix: [Double] {
         didSet {
@@ -67,14 +72,23 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         chartHeight = height
     }
     
-    func prepareMatrixValuePx(dataRanges: DataRanges) {
-        let scaleX = (chartWidth / dataRanges.deltaX)
+    func prepareMatrixValuePx(dataRanges: DataRanges, reason: ChartViewportChange.Reason = .programmatic) {
+        guard dataRanges.chartXMin.isFinite, dataRanges.chartYMin.isFinite,
+              dataRanges.deltaX.isFinite, dataRanges.deltaX > 0,
+              dataRanges.deltaY.isFinite, dataRanges.deltaY > 0 else { return }
+        var horizontalSpan = dataRanges.deltaX
+        if let limits = xSpanLimits,
+           limits.lowerBound.isFinite, limits.lowerBound > 0, limits.upperBound.isFinite {
+            horizontalSpan = min(max(horizontalSpan, limits.lowerBound), limits.upperBound)
+        }
+        let horizontalMinimum = dataRanges.chartXMin + (dataRanges.deltaX - horizontalSpan) / 2
+        let scaleX = (chartWidth / horizontalSpan)
         let scaleY = (chartHeight / dataRanges.deltaY)
         
         let matrixA = [
             scaleX, 0, 0,
             0, -scaleY, 0,
-            -dataRanges.chartXMin * scaleX, dataRanges.chartYMin * scaleY, 1
+            -horizontalMinimum * scaleX, dataRanges.chartYMin * scaleY, 1
         ]
         
         let matrixB = [
@@ -86,32 +100,49 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         var result = [Double](repeating: 0, count: 9)
         vDSP_mmulD(matrixA, 1, matrixB, 1, &result, 1, 3, 3, 3)
         
-        valueToPixelMatrix = result
+        apply(result, reason: reason)
     }
     
+    func setVisibleYRange(_ range: ClosedRange<Double>) {
+        let span = range.upperBound - range.lowerBound
+        guard range.lowerBound.isFinite, range.upperBound.isFinite,
+              span.isFinite, span > 0 else { return }
+        let scale = chartHeight / span
+        var matrix = valueToPixelMatrix
+        // Retain the X coefficients instead of rebuilding them from an inverse
+        // transform or reapplying horizontal limits during a vertical-only fit.
+        matrix[4] = -scale
+        matrix[7] = chartHeight + range.lowerBound * scale
+        apply(matrix, reason: .programmatic)
+    }
+
     public func zoom(scaleX: CGFloat, scaleY: CGFloat, x: CGFloat = 0, y: CGFloat = 0) {
+        guard scaleX.isFinite, scaleX > 0, scaleY.isFinite, scaleY > 0,
+              x.isFinite, y.isFinite else { return }
+        var horizontalScale = scaleX
+        if let limits = xSpanLimits,
+           limits.lowerBound.isFinite, limits.lowerBound > 0, limits.upperBound.isFinite {
+            let currentSpan = chartWidth / valueToPixelMatrix[0]
+            let requestedSpan = currentSpan / scaleX
+            let limitedSpan = min(max(requestedSpan, limits.lowerBound), limits.upperBound)
+            horizontalScale = currentSpan / limitedSpan
+        }
         let valuePoint = self.transformer.valueForTouchPoint(CGPoint(x: x, y: y))
         
-        let newTx = (1-scaleX)*valuePoint.x*valueToPixelMatrix[0] + valueToPixelMatrix[6]
+        let newTx = (1-horizontalScale)*valuePoint.x*valueToPixelMatrix[0] + valueToPixelMatrix[6]
         let newTy = (1-scaleY)*valuePoint.y*valueToPixelMatrix[4] + valueToPixelMatrix[7]
 
         var newMatrix = valueToPixelMatrix
-        let newScaleX = valueToPixelMatrix[0] * scaleX
+        let newScaleX = valueToPixelMatrix[0] * horizontalScale
         newMatrix[0] = newScaleX
         newMatrix[4] = valueToPixelMatrix[4] * scaleY
         newMatrix[6] = newTx
         newMatrix[7] = newTy
-        // Need to make sure the x axis is indexed with 1 as stepper.
-        
-        let xDelta = chartWidth/newScaleX/60000
-        // Zoom and Scoll limit should be delegated to data provider
-        if xDelta >= 300 {
-            return
-        }
-        valueToPixelMatrix = newMatrix
+        apply(newMatrix, reason: .zoom)
     }
     
     public func translate(delta: CGPoint) {
+        guard delta.x.isFinite, delta.y.isFinite else { return }
         let newTx = valueToPixelMatrix[6] + delta.x
         let newTy = valueToPixelMatrix[7] + delta.y
         
@@ -120,7 +151,16 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         newMatrix[6] = newTx
         newMatrix[7] = newTy
         
-        valueToPixelMatrix = newMatrix
+        apply(newMatrix, reason: .pan)
+    }
+
+    private func apply(_ matrix: [Double], reason: ChartViewportChange.Reason) {
+        guard matrix.allSatisfy(\.isFinite), matrix[0] > 0, matrix[4] < 0,
+              matrix != valueToPixelMatrix else { return }
+        // Reject transforms that cannot produce finite data coordinates.
+        guard matrix.invert().allSatisfy(\.isFinite) else { return }
+        valueToPixelMatrix = matrix
+        viewportChanges.send(reason)
     }
 }
 
