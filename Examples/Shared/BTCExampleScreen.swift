@@ -122,8 +122,10 @@ public struct BTCExampleScreen: View {
                             .font(.caption)
                             .foregroundColor(.red)
                             .accessibilityLabel("Candle loading error: " + message)
-                        Button("Retry") { provider.retryViewportLoad() }
-                            .disabled(provider.isLoading)
+                        Button("Retry") {
+                            Task { await provider.retryFailedLoad() }
+                        }
+                        .disabled(provider.isLoading)
                     }
                 }
                 Text("Zoom for remote 1m / 5m / 15m candles · Pan to load more history")

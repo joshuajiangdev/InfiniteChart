@@ -156,6 +156,18 @@ public final class BTCDataProvider: ObservableObject, CandleStickDataProvider, V
         scheduleLoad(interval: selected, range: viewport.visibleXRange)
     }
 
+    /// Retries the failed operation: Refresh requests recent candles, while a
+    /// historical request keeps the current viewport and selected detail.
+    @MainActor public func retryFailedLoad() async {
+        guard errorMessage != nil, !isLoading else { return }
+        if failedViewportRange != nil {
+            retryViewportLoad()
+            await loadTask?.value
+        } else {
+            await refresh()
+        }
+    }
+
     /// Retries the current historical viewport rather than jumping to the latest market data.
     @MainActor public func retryViewportLoad() {
         guard let lastViewport, !isRefreshing else { return }
@@ -200,6 +212,8 @@ public final class BTCDataProvider: ObservableObject, CandleStickDataProvider, V
     @MainActor public func refresh() async {
         guard !isRefreshing else { return }
         cancelPendingLoad()
+        failedViewportRange = nil
+        failedIntervalMinutes = nil
         let generation = requestGeneration
         isRefreshing = true
         isLoading = true

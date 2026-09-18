@@ -209,10 +209,10 @@ final class BTCDetailTransitionTests: XCTestCase {
         await assertRequestCount(1, transport)
         XCTAssertNotNil(provider.errorMessage, "An auto-fit Y callback must not clear errors or repeatedly retry the same failed request.")
 
-        provider.retryViewportLoad()
+        let retry = Task { await provider.retryFailedLoad() }
         await waitForRequests(2, transport)
         try await transport.succeed(1)
-        await provider.waitForPendingRequest()
+        await retry.value
         XCTAssertEqual(provider.candleIntervalMinutes, 5)
         XCTAssertEqual(provider.revision, revision)
         XCTAssertNil(provider.errorMessage)
@@ -246,6 +246,70 @@ final class BTCDetailTransitionTests: XCTestCase {
         await provider.waitForPendingRequest()
         XCTAssertEqual(provider.candleIntervalMinutes, 5)
         await assertRequestCount(3, transport)
+    }
+
+    func testRetryAfterRefreshFailureRequestsRecentCandles() async throws {
+        let transport = AutomaticHistoryTransport(statuses: [503])
+        let provider = makeProvider(transport: transport)
+        provider.updateViewport(viewport(pointsPerMinute: 10))
+        let revision = provider.revision
+
+        await provider.refresh()
+        XCTAssertNotNil(provider.errorMessage)
+        XCTAssertEqual(provider.revision, revision)
+
+        await provider.retryFailedLoad()
+
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 2)
+        let retried = try RequestInfo(try XCTUnwrap(requests.last))
+        XCTAssertEqual(retried.granularity, 60)
+        XCTAssertNil(retried.start)
+        XCTAssertNil(retried.end)
+        XCTAssertNotEqual(provider.revision, revision)
+        XCTAssertFalse(provider.isSnapshot)
+        XCTAssertFalse(provider.isLoading)
+        XCTAssertNil(provider.errorMessage)
+    }
+
+    func testRetryAfterRefreshFailureWorksWithoutAnInitialViewport() async throws {
+        let transport = AutomaticHistoryTransport(statuses: [503])
+        let provider = BTCDataProvider(candles: [], fetchData: { request in
+            try await transport.fetch(request)
+        })
+        await provider.refresh()
+        XCTAssertNil(provider.getInitDataRanges())
+        XCTAssertNotNil(provider.errorMessage)
+
+        await provider.retryFailedLoad()
+
+        await assertRequestCount(2, transport)
+        XCTAssertNotNil(provider.getInitDataRanges())
+        XCTAssertFalse(provider.isSnapshot)
+        XCTAssertNil(provider.errorMessage)
+    }
+
+    func testRefreshFailureRetrySupersedesAnEarlierHistoryFailure() async throws {
+        let transport = AutomaticHistoryTransport(statuses: [503, 429])
+        let provider = makeProvider(transport: transport)
+        provider.updateViewport(viewport(pointsPerMinute: 2))
+        await provider.waitForPendingRequest()
+        XCTAssertTrue(provider.errorMessage?.contains("503") == true)
+
+        await provider.refresh()
+        XCTAssertTrue(provider.errorMessage?.contains("429") == true)
+        let revision = provider.revision
+        await provider.retryFailedLoad()
+
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 3)
+        let retried = try RequestInfo(try XCTUnwrap(requests.last))
+        XCTAssertEqual(retried.granularity, 60)
+        XCTAssertNil(retried.start)
+        XCTAssertNil(retried.end)
+        XCTAssertEqual(provider.candleIntervalMinutes, 1)
+        XCTAssertNotEqual(provider.revision, revision)
+        XCTAssertNil(provider.errorMessage)
     }
 
     func testHysteresisAvoidsRepeatedFetchesAtDetailBoundaries() async throws {
@@ -535,9 +599,16 @@ private func response(_ request: URLRequest, timestamps: [Double]? = nil, interv
 
 private actor AutomaticHistoryTransport {
     private(set) var requests: [URLRequest] = []
+    private let statuses: [Int]
+
+    init(statuses: [Int] = []) {
+        self.statuses = statuses
+    }
+
     func fetch(_ request: URLRequest) throws -> (Data, URLResponse) {
+        let status = requests.count < statuses.count ? statuses[requests.count] : 200
         requests.append(request)
-        return try response(request)
+        return try response(request, status: status)
     }
 }
 

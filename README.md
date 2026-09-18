@@ -76,7 +76,7 @@ public market-data refresh. Both demonstrate application-owned transitions
 between remotely fetched 1m, 5m, and 15m candles when zooming. Coarser resolutions
 load longer history, and panning beyond cached data requests another window.
 Zoom buttons, loading/retry states, and a live interval label make the transitions
-visible. It depends on this library through `.package(path: "..")`.
+visible. It depends on this library through `.package(name: "InfiniteChart", path: "..")`.
 
 ```sh
 swift run --package-path Examples BTCMacExample

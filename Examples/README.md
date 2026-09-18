@@ -2,7 +2,7 @@
 
 Native iOS and macOS examples inspired by [InfiniteChartExample](https://github.com/joshuajiangdev/InfiniteChartExample). Both display BTC/USD candlesticks, trading volume, and optional SMA 10 and EMA 10 overlays. The application fetches one-, five-, and fifteen-minute candles from Coinbase as the visible range changes. Chart time labels use UTC.
 
-`Examples/Package.swift` is a standalone Swift package with a local dependency on `..`. The root `Package.swift` remains the library's build definition; the examples introduce no Xcode project or workspace.
+`Examples/Package.swift` is a standalone Swift package with a named local dependency on `..`, so it also builds in checkouts and worktrees with other directory names. The root `Package.swift` remains the library's build definition; the examples introduce no Xcode project or workspace.
 
 ## Run on macOS
 
@@ -45,7 +45,7 @@ The app bundle is written to `Examples/.build/ios/BTCiOSExample.app`. This launc
 
 The initial chart uses a bundled historical snapshot from Coinbase's public BTC/USD candles endpoint, so the first view works offline. It contains 240 candles from August 25, 2024; see the [snapshot source and format](Shared/Resources/README.md). Zooming or panning beyond cached coverage requests remote candles around the timestamps you are viewing, including historical dates. Select **Refresh** to explicitly jump to recent one-minute candles. No API key or account is required, and there is no streaming or background polling.
 
-The status shows whether candles are bundled or fetched, their interval, and the loaded time range. A pending request keeps the current chart visible. A failed request keeps the previous data and offers **Retry** for the current viewport; it does not silently substitute locally aggregated candles.
+The status shows whether candles are bundled or fetched, their interval, and the loaded time range. A pending request keeps the current chart visible. A failed request keeps the previous data and offers **Retry**. After a history failure, Retry reloads the current viewport; after a failed Refresh, it requests recent one-minute candles again. It does not silently substitute locally aggregated candles.
 
 Toggle **SMA 10** and **EMA 10** to show or hide the moving averages. Drag to pan, pinch to zoom, and drag an axis to adjust its range.
 
