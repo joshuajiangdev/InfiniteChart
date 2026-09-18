@@ -56,6 +56,18 @@ public protocol ChartDataProviderBase {
     var technicalIndicators: [TechnicalIndicator] { get }
 }
 
+/// Supplies actual sample positions for data with a configurable interval or gaps.
+/// Providers that do not adopt this protocol retain one-minute sample iteration.
+public protocol IndexedChartDataProvider: ChartDataProviderBase {
+    /// The typical distance between samples, in the same units as the X values.
+    /// Must be finite and positive. Used for bar width, not to generate sample positions.
+    var nominalXStep: Double { get }
+
+    /// Returns the available X values in ascending order, without duplicates.
+    /// Include samples equal to either endpoint of the requested range.
+    func getXValues(in range: ClosedRange<Double>) -> [Double]
+}
+
 public struct TechnicalIndicator {
     public let name: String
     public let color: ChartColor

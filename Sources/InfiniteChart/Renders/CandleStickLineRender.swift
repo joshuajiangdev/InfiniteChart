@@ -17,13 +17,12 @@ class CandleStickLineRender {
     func drawCandleStickChart(context: CGContext, transformerProvider: AccelerateTransformerProvider) {
         let transformer = transformerProvider.transformer
         
-        var startX = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: 0, y: 0)).x.rounded(.up)
-        startX = dataProvider.getClosestXValue(to: startX, seekBelow: true, offset: 1) ?? startX
-        var endX = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: transformerProvider.chartWidth, y: 0)).x.rounded(.down)
-        endX = dataProvider.getClosestXValue(to: endX, seekBelow: false, offset: 1) ?? endX
-        let step: Double = 60*1000 // Adjust step size as needed
+        let xValues = ChartRenderSamples.xValues(dataProvider: dataProvider, transformerProvider: transformerProvider)
+        let bodyWidth = ChartRenderSamples.barWidth(
+            dataProvider: dataProvider, transformerProvider: transformerProvider, legacyWidth: 4
+        )
         
-        for x in stride(from: startX, through: endX, by: step) {
+        for x in xValues {
             guard let candleStick = dataProvider.getCandleStickDataPoint(for: x) else {
                 continue
             }
@@ -40,8 +39,8 @@ class CandleStickLineRender {
             context.strokePath()
             
             // Draw the body
-            let bodyRect = CGRect(x: open.x - 2, y: min(open.y, close.y),
-                                  width: 4, height: abs(close.y - open.y))
+            let bodyRect = CGRect(x: open.x - bodyWidth / 2, y: min(open.y, close.y),
+                                  width: bodyWidth, height: abs(close.y - open.y))
             context.setFillColor(candleStick.color.cgColor)
             context.fill(bodyRect)
         }

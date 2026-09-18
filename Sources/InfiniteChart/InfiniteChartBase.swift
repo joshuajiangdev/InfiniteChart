@@ -3,6 +3,44 @@ import CoreGraphics
 import Combine
 
 public class InfiniteChartBase: ChartPlatformView {
+
+    /// Delivered on the main queue after navigation or layout changes. Data-only
+    /// redraws do not trigger this callback. The application owns detail selection.
+    public var onViewportChange: ((ChartViewportChange) -> Void)? {
+        didSet {
+            lastNotifiedViewport = nil
+            scheduleViewportChange(reason: .initial)
+        }
+    }
+
+    /// Nil until the first layout with a nonempty plot area.
+    public var viewport: ChartViewport? {
+        guard hasLaidOutChart else { return nil }
+        let size = CGSize(width: transformerProvider.chartWidth, height: transformerProvider.chartHeight)
+        let topLeft = transformerProvider.transformer.valueForTouchPoint(.zero)
+        let bottomRight = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: size.width, y: size.height))
+        guard topLeft.x.isFinite, topLeft.y.isFinite, bottomRight.x.isFinite, bottomRight.y.isFinite,
+              topLeft.x < bottomRight.x, bottomRight.y < topLeft.y else { return nil }
+        return ChartViewport(visibleXRange: topLeft.x...bottomRight.x,
+                             visibleYRange: bottomRight.y...topLeft.y, plotSize: size)
+    }
+
+    /// Optional positive, finite horizontal span limits in the provider's X units.
+    /// Nil leaves the horizontal span unrestricted. Invalid limits are ignored.
+    public var xSpanLimits: ClosedRange<Double>? {
+        get { transformerProvider.xSpanLimits }
+        set {
+            if let limits = newValue {
+                guard limits.lowerBound.isFinite, limits.lowerBound > 0,
+                      limits.upperBound.isFinite else { return }
+            }
+            transformerProvider.xSpanLimits = newValue
+        }
+    }
+
+    private var hasLaidOutChart = false
+    private var lastNotifiedViewport: ChartViewport?
+    private var pendingViewportReason: ChartViewportChange.Reason?
     
     var disposeBag = Set<AnyCancellable>()
     
@@ -28,6 +66,9 @@ public class InfiniteChartBase: ChartPlatformView {
     }()
     
     private func setupObservable() {
+        transformerProvider.viewportChanges
+            .sink { [weak self] reason in self?.scheduleViewportChange(reason: reason) }
+            .store(in: &disposeBag)
         Publishers.CombineLatest(
             transformerProvider.$transformer,
             dataProvider.redrawStream
@@ -36,6 +77,55 @@ public class InfiniteChartBase: ChartPlatformView {
         .sink(receiveValue: { [weak self] _, _ in
             self?.requestChartDisplay()
         }).store(in: &disposeBag)
+    }
+
+    private func scheduleViewportChange(reason: ChartViewportChange.Reason) {
+        let alreadyScheduled = pendingViewportReason != nil
+        pendingViewportReason = reason
+        guard !alreadyScheduled else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let reason = self.pendingViewportReason else { return }
+            self.pendingViewportReason = nil
+            self.notifyViewportChange(reason: reason)
+        }
+    }
+
+    private func notifyViewportChange(reason: ChartViewportChange.Reason) {
+        guard let viewport, viewport != lastNotifiedViewport else { return }
+        lastNotifiedViewport = viewport
+        dataProvider.tranformerUpdatedDelegate?.transformerDidUpdate(transformer: transformerProvider.transformer)
+        onViewportChange?(ChartViewportChange(viewport: viewport, reason: reason))
+    }
+
+    /// Navigates horizontally while retaining the current vertical range.
+    /// Data updates through the provider's redraw stream preserve this viewport.
+    public func setVisibleXRange(_ range: ClosedRange<Double>) {
+        guard let viewport else { return }
+        let requestedSpan = range.upperBound - range.lowerBound
+        guard range.lowerBound.isFinite, range.upperBound.isFinite,
+              requestedSpan.isFinite, requestedSpan > 0 else { return }
+        let span = xSpanLimits.map { min(max(requestedSpan, $0.lowerBound), $0.upperBound) } ?? requestedSpan
+        let center = range.lowerBound + requestedSpan / 2
+        transformerProvider.prepareMatrixValuePx(dataRanges: DataRanges(
+            chartXMin: center - span / 2, deltaX: span,
+            chartYMin: viewport.visibleYRange.lowerBound,
+            deltaY: viewport.visibleYRange.upperBound - viewport.visibleYRange.lowerBound
+        ))
+    }
+
+    /// Fits the vertical range while preserving horizontal navigation exactly.
+    /// The application can call this after replacing data without resetting zoom.
+    /// Empty or nonfinite ranges are ignored, as are calls before the first layout.
+    public func setVisibleYRange(_ range: ClosedRange<Double>) {
+        guard viewport != nil else { return }
+        transformerProvider.setVisibleYRange(range)
+    }
+
+    /// Explicitly returns to the provider's initial range. Replacing data alone
+    /// never calls this method, so a detail-level transition does not move the plot.
+    public func resetViewport() {
+        guard hasLaidOutChart, let ranges = dataProvider.getInitDataRanges() else { return }
+        transformerProvider.prepareMatrixValuePx(dataRanges: ranges)
     }
     
     lazy var xAxisView = XAxisView(frame: .zero)
@@ -117,9 +207,17 @@ public class InfiniteChartBase: ChartPlatformView {
         )
 
         if plotWidth > 0, plotHeight > 0,
-           plotWidth != transformerProvider.chartWidth || plotHeight != transformerProvider.chartHeight {
+           !hasLaidOutChart || plotWidth != transformerProvider.chartWidth || plotHeight != transformerProvider.chartHeight {
+            let previousViewport = viewport
             transformerProvider.setChartDimens(width: plotWidth, height: plotHeight)
-            transformerProvider.prepareMatrixValuePx(dataRanges: transformerProvider.initDataRanges)
+            hasLaidOutChart = true
+            transformerProvider.prepareMatrixValuePx(
+                dataRanges: previousViewport?.dataRanges ?? transformerProvider.initDataRanges,
+                reason: previousViewport == nil ? .initial : .resize
+            )
+            // Plot dimensions are part of the viewport even if the transform
+            // happens to remain identical (for example, the first tiny layout).
+            scheduleViewportChange(reason: previousViewport == nil ? .initial : .resize)
         }
         requestChartDisplay()
     }

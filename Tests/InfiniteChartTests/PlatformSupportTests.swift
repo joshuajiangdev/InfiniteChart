@@ -167,6 +167,10 @@ final class PlatformSupportTests: XCTestCase {
                 }
 
                 let gesture = TestPinchGestureRecognizer(target: nil, action: nil)
+                if index == 2 {
+                    // Tightening X limits must not let a Y-axis pinch change X.
+                    chart.xSpanLimits = 60_000...120_000
+                }
                 gesture.testLocation = CGPoint(x: 50, y: 60)
                 gesture.state = .changed
                 #if canImport(UIKit)
