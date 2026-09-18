@@ -8,3 +8,6 @@ DerivedData/
 *.xcworkspace/
 .netrc
 .vscode/
+/.envrc
+/.graphite-infinitechart-token
+/.gh-infinitechart/
