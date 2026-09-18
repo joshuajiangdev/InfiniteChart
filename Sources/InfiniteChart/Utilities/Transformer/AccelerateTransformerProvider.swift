@@ -120,7 +120,8 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         guard scaleX.isFinite, scaleX > 0, scaleY.isFinite, scaleY > 0,
               x.isFinite, y.isFinite else { return }
         var horizontalScale = scaleX
-        if let limits = xSpanLimits,
+        // Only constrain X when the gesture requests horizontal scaling.
+        if scaleX != 1, let limits = xSpanLimits,
            limits.lowerBound.isFinite, limits.lowerBound > 0, limits.upperBound.isFinite {
             let currentSpan = chartWidth / valueToPixelMatrix[0]
             let requestedSpan = currentSpan / scaleX

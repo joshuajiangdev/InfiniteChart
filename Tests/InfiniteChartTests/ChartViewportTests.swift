@@ -178,6 +178,38 @@ final class ChartViewportTests: XCTestCase {
     }
 
     @MainActor
+    func testVerticalOnlyZoomPreservesXRangeAfterSpanLimitsChange() async throws {
+        for limits in [200.0...400.0, 2_000.0...4_000.0] {
+            for scaleY in [0.5, 1.0, 2.0] {
+                let chart = makeChart()
+                layout(chart)
+                let original = try XCTUnwrap(chart.viewport)
+                // Both a lower maximum and a higher minimum exclude the current X span.
+                chart.xSpanLimits = limits
+                var changes: [ChartViewportChange] = []
+                chart.onViewportChange = { changes.append($0) }
+                await drainMainQueue()
+                changes.removeAll()
+
+                chart.transformerProvider.zoom(scaleX: 1, scaleY: scaleY, x: 0, y: 150)
+                await drainMainQueue()
+
+                let zoomed = try XCTUnwrap(chart.viewport)
+                XCTAssertEqual(zoomed.visibleXRange, original.visibleXRange)
+                XCTAssertEqual(zoomed.visibleYRange.lowerBound, 50 - 50 / scaleY, accuracy: 0.0001)
+                XCTAssertEqual(zoomed.visibleYRange.upperBound, 50 + 50 / scaleY, accuracy: 0.0001)
+                if scaleY == 1 {
+                    XCTAssertTrue(changes.isEmpty, "An unchanged gesture must not move the viewport.")
+                } else {
+                    XCTAssertEqual(changes.count, 1)
+                    XCTAssertEqual(changes.first?.reason, .zoom)
+                    XCTAssertEqual(changes.first?.viewport, zoomed)
+                }
+            }
+        }
+    }
+
+    @MainActor
     func testInitialLayoutAndResetRespectSpanLimits() throws {
         let chart = makeChart()
         chart.xSpanLimits = 200...400
