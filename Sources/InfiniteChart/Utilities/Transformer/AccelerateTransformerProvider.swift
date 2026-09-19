@@ -16,6 +16,20 @@ final public class AccelerateTransformerProvider: TransformerProviding {
     
     private(set) var chartWidth: CGFloat = 0
     private(set) var chartHeight: CGFloat = 0
+
+    /// A snapshot derived from the existing transform and plot dimensions.
+    var viewport: ChartViewport? {
+        let size = CGSize(width: chartWidth, height: chartHeight)
+        guard size.width > 0, size.height > 0 else { return nil }
+        let topLeft = transformer.valueForTouchPoint(.zero)
+        let bottomRight = transformer.valueForTouchPoint(CGPoint(x: size.width, y: size.height))
+        guard topLeft.x.isFinite, topLeft.y.isFinite, bottomRight.x.isFinite, bottomRight.y.isFinite,
+              topLeft.x < bottomRight.x, bottomRight.y < topLeft.y else { return nil }
+        return ChartViewport(visibleXRange: topLeft.x...bottomRight.x,
+                             visibleYRange: bottomRight.y...topLeft.y, plotSize: size)
+    }
+
+    let viewportChanges = PassthroughSubject<ChartViewportChange.Reason, Never>()
     
     private(set) var valueToPixelMatrix: [Double] {
         didSet {
@@ -67,7 +81,7 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         chartHeight = height
     }
     
-    func prepareMatrixValuePx(dataRanges: DataRanges) {
+    func prepareMatrixValuePx(dataRanges: DataRanges, reason: ChartViewportChange.Reason = .programmatic) {
         let scaleX = (chartWidth / dataRanges.deltaX)
         let scaleY = (chartHeight / dataRanges.deltaY)
         
@@ -87,6 +101,7 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         vDSP_mmulD(matrixA, 1, matrixB, 1, &result, 1, 3, 3, 3)
         
         valueToPixelMatrix = result
+        viewportChanges.send(reason)
     }
     
     public func zoom(scaleX: CGFloat, scaleY: CGFloat, x: CGFloat = 0, y: CGFloat = 0) {
@@ -109,6 +124,7 @@ final public class AccelerateTransformerProvider: TransformerProviding {
             return
         }
         valueToPixelMatrix = newMatrix
+        viewportChanges.send(.zoom)
     }
     
     public func translate(delta: CGPoint) {
@@ -121,6 +137,7 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         newMatrix[7] = newTy
         
         valueToPixelMatrix = newMatrix
+        viewportChanges.send(.pan)
     }
 }
 
