@@ -181,8 +181,13 @@ public class InfiniteChartBase: ChartPlatformView {
         chartBaseView.transformerProvider = transformerProvider
     }
     
-    /// Draws candles, volume, and indicators using full plot geometry, even for a partial redraw.
+    /// Draws candles, lines, volume, and indicators in that order, clipped to the plot bounds.
+    /// Preserves graphics state and uses full plot geometry even when only a dirty subregion is requested.
     /// Skips drawing until the plot has positive dimensions and valid initial data ranges.
+    ///
+    /// Renderers draw in this container, whose bounds also include the axes.
+    /// `chartBaseView` handles gestures; its bounds cannot clip its parent's drawing.
+    /// The explicit context clip enforces the smaller plot boundary.
     public override func draw(_ rect: CGRect) {
         guard let context = currentChartGraphicsContext() else {
             return
@@ -192,6 +197,10 @@ public class InfiniteChartBase: ChartPlatformView {
         let height = bounds.height - xAxisConfig.requiredSpace
         let width = bounds.width - yAxisConfig.requiredSpace
         guard width > 0, height > 0, transformerProvider.hasValidDataRanges else { return }
+
+        context.saveGState()
+        defer { context.restoreGState() }
+        context.clip(to: CGRect(x: 0, y: 0, width: width, height: height))
         
         let mainChartRect = CGRect(x: 0, y: 0, width: width, height: height * 2/3)
         let volumeChartRect = CGRect(x: 0, y: mainChartRect.maxY, width: width, height: height * 1/3)
@@ -200,7 +209,7 @@ public class InfiniteChartBase: ChartPlatformView {
         candleStickRender?.drawCandleStickChart(context: context, transformerProvider: transformerProvider)
         
         // Draw line chart on top
-//        lineRender?.drawSimpleLineChart(context: context, transformerProvider: transformerProvider)
+        lineRender?.drawSimpleLineChart(context: context, transformerProvider: transformerProvider)
         
         // Draw volume chart
         volumeRender?.drawVolumeChart(context: context, transformerProvider: transformerProvider, rect: volumeChartRect)
