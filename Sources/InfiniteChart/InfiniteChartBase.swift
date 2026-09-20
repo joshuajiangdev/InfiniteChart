@@ -9,6 +9,19 @@ public class InfiniteChartBase: ChartPlatformView {
     /// Defer chart mutations from subscribers until the transform update completes.
     public let viewportStream = CurrentValueSubject<ChartViewport?, Never>(nil)
 
+    /// Optional positive, finite horizontal span limits in the provider's X units.
+    /// Nil leaves the horizontal span unrestricted. Invalid limits are ignored.
+    public var xSpanLimits: ClosedRange<Double>? {
+        get { transformerProvider.xSpanLimits }
+        set {
+            if let limits = newValue {
+                guard limits.lowerBound.isFinite, limits.lowerBound > 0,
+                      limits.upperBound.isFinite else { return }
+            }
+            transformerProvider.xSpanLimits = newValue
+        }
+    }
+
     private var hasLaidOutChart = false
     
     var disposeBag = Set<AnyCancellable>()
@@ -57,7 +70,38 @@ public class InfiniteChartBase: ChartPlatformView {
             self?.requestChartDisplay()
         }).store(in: &disposeBag)
     }
-    
+
+    /// Navigates horizontally while retaining the current vertical range.
+    /// Data updates through the provider's redraw stream preserve this viewport.
+    public func setVisibleXRange(_ range: ClosedRange<Double>) {
+        guard let viewport = viewportStream.value else { return }
+        let requestedSpan = range.upperBound - range.lowerBound
+        guard range.lowerBound.isFinite, range.upperBound.isFinite,
+              requestedSpan.isFinite, requestedSpan > 0 else { return }
+        let span = xSpanLimits.map { min(max(requestedSpan, $0.lowerBound), $0.upperBound) } ?? requestedSpan
+        let center = range.lowerBound + requestedSpan / 2
+        transformerProvider.prepareMatrixValuePx(dataRanges: DataRanges(
+            chartXMin: center - span / 2, deltaX: span,
+            chartYMin: viewport.visibleYRange.lowerBound,
+            deltaY: viewport.visibleYRange.upperBound - viewport.visibleYRange.lowerBound
+        ))
+    }
+
+    /// Fits the vertical range while preserving horizontal navigation exactly.
+    /// The application can call this after replacing data without resetting zoom.
+    /// Empty or nonfinite ranges are ignored, as are calls before the first layout.
+    public func setVisibleYRange(_ range: ClosedRange<Double>) {
+        guard viewportStream.value != nil else { return }
+        transformerProvider.setVisibleYRange(range)
+    }
+
+    /// Explicitly returns to the provider's initial range. Replacing data alone
+    /// never calls this method, so a detail-level transition does not move the plot.
+    public func resetViewport() {
+        guard hasLaidOutChart, let ranges = dataProvider.getInitDataRanges() else { return }
+        transformerProvider.prepareMatrixValuePx(dataRanges: ranges)
+    }
+
     lazy var xAxisView = XAxisView(frame: .zero)
     lazy var yAxisView = YAxisView(frame: .zero)
     lazy var chartBaseView = ChartBaseView(frame: .zero)
@@ -138,9 +182,14 @@ public class InfiniteChartBase: ChartPlatformView {
 
         if plotWidth > 0, plotHeight > 0,
            !hasLaidOutChart || plotWidth != transformerProvider.chartWidth || plotHeight != transformerProvider.chartHeight {
+            let previousViewport = hasLaidOutChart
+                ? transformerProvider.viewport(for: transformerProvider.transformer)
+                : nil
             transformerProvider.setChartDimens(width: plotWidth, height: plotHeight)
             hasLaidOutChart = true
-            transformerProvider.prepareMatrixValuePx(dataRanges: transformerProvider.initDataRanges)
+            transformerProvider.prepareMatrixValuePx(
+                dataRanges: previousViewport?.dataRanges ?? transformerProvider.initDataRanges
+            )
         }
         // Layout can make the viewport available without changing the transform.
         updateViewport(using: transformerProvider.transformer)

@@ -13,4 +13,13 @@ public struct ChartViewport: Equatable, Sendable {
         self.visibleYRange = visibleYRange
         self.plotSize = plotSize
     }
+
+    var dataRanges: DataRanges {
+        DataRanges(
+            chartXMin: visibleXRange.lowerBound,
+            deltaX: visibleXRange.upperBound - visibleXRange.lowerBound,
+            chartYMin: visibleYRange.lowerBound,
+            deltaY: visibleYRange.upperBound - visibleYRange.lowerBound
+        )
+    }
 }

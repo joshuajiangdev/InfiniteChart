@@ -42,38 +42,53 @@ Drag to pan and pinch to zoom on either platform. macOS also supports mouse whee
 and trackpad scrolling to pan. Gestures on an axis affect only that axis.
 Use `AxisConfig.labelFormatter` to display timestamps, prices, or other custom labels.
 
-Use `chart.viewportStream.value` to read the current viewport, or subscribe to
-`chart.viewportStream` for updates:
+Applications can read `chart.viewportStream.value` or subscribe to updates to choose a data resolution:
 
 ```swift
 let currentViewport = chart.viewportStream.value
 let viewportObservation = chart.viewportStream
     .compactMap { $0 }
-    .sink { viewport in
-        print(viewport.visibleXRange)
-        print(viewport.visibleYRange)
-        print(viewport.plotSize)
+    .sink { [weak provider] viewport in
+        // Application code chooses, loads, or aggregates data for this viewport.
+        provider?.updateViewport(viewport)
     }
 ```
 
+The stream reports the visible X/Y ranges and plot size. Retain the returned
+`AnyCancellable` while observing the chart and cancel it to stop receiving updates. The
+application owns detail selection and updates its data provider; replacing the
+displayed data and publishing a redraw preserves the viewport. `updateViewport`
+above is an application method, demonstrated by the BTC example provider.
+Use `chart.setVisibleXRange(...)` for programmatic time-range changes,
+`chart.setVisibleYRange(...)` to fit prices without changing the horizontal range,
+`chart.resetViewport()` to restore the initial ranges, and `chart.xSpanLimits`
+to configure zoom limits in your data's X units.
+
+For variable intervals or irregular samples, also adopt `IndexedChartDataProvider`.
+Return the actual sorted, unique X values in the requested inclusive range from
+`getXValues(in:)`, and provide `nominalXStep` in the same X units for bar sizing.
+The renderer then uses those samples instead of the legacy one-minute step.
+
 The chart maintains a `CurrentValueSubject<ChartViewport?, Never>`. Its value is
-nil before layout or while the plot is empty; use `compactMap` to observe only
-valid viewports. The value stays current even when no application is subscribed.
-Keep the returned `AnyCancellable` alive while observing the chart.
+nil before layout or while the plot is empty, and stays current without application
+subscribers. Use `compactMap` to observe only valid viewports.
 
-Read and subscribe on the main actor. Subscriptions receive the current value
-immediately, then each distinct transform or layout update. If a subscriber
-changes the chart, defer that work with `Task { @MainActor in ... }` until the
-transform update completes. Data-only redraws do not publish viewport changes.
-
-`ChartViewport` reports visible X/Y ranges in the provider's data units and plot
-size in points, excluding the axes.
+Read and subscribe on the main actor. Each subscription receives the current value
+immediately, then each distinct transform or layout update. If a subscriber changes
+the chart, defer that work with `Task { @MainActor in ... }` until the transform
+update completes, as the BTC example does for price-axis fitting. Data-only redraws
+do not publish viewport changes. Applications loading data asynchronously should
+discard superseded responses and preserve the latest viewport when applying data.
 
 ## Examples
 
 The standalone [Examples package](Examples/README.md) includes native macOS and
 iOS BTC/USD charts with volume, SMA/EMA toggles, bundled historical candles, and
-public market-data refresh. It depends on this library through `.package(path: "..")`.
+public market-data refresh. Both demonstrate application-owned transitions
+between remotely fetched 1m, 5m, and 15m candles when zooming. Coarser resolutions
+load longer history, and panning beyond cached data requests another window.
+Zoom buttons, loading/retry states, and a live interval label make the transitions
+visible. It depends on this library through `.package(name: "InfiniteChart", path: "..")`.
 
 ```sh
 swift run --package-path Examples BTCMacExample

@@ -20,15 +20,11 @@ final class LineRender {
         let linePath = CGMutablePath()
         let transformer = transformerProvider.transformer
         
-        var startX = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: 0, y: 0)).x.rounded(.up)
-        startX = dataProvider.getClosestXValue(to: startX, seekBelow: true, offset: 1) ?? startX
-        var endX = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: transformerProvider.chartWidth, y: 0)).x.rounded(.down)
-        endX = dataProvider.getClosestXValue(to: endX, seekBelow: false, offset: 1) ?? endX
-        let step: Double = 60*1000 // Adjust step size as needed
+        let xValues = ChartRenderSamples.xValues(dataProvider: dataProvider, transformerProvider: transformerProvider)
         
         var isFirstPoint = true
         
-        for x in stride(from: startX, through: endX, by: step) {
+        for x in xValues {
             guard let y = dataProvider.getYValue(for: x) else {
                 continue
             }

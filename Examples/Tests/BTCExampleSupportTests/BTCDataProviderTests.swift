@@ -142,13 +142,13 @@ final class BTCDataProviderTests: XCTestCase {
 
     @MainActor
     func testRefreshReplacesDataAndRevisionAfterSuccessfulResponse() async {
-        let provider = BTCDataProvider(candles: candles([10])) { request in
+        let provider = BTCDataProvider(candles: candles([10]), fetchData: { request in
             XCTAssertEqual(request.url?.host, "api.exchange.coinbase.com")
             XCTAssertEqual(request.url?.query, "granularity=60")
             XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             return (Data("[[120,100,110,101,108,3]]".utf8), response)
-        }
+        })
         let revision = provider.revision
 
         await provider.refresh()
@@ -164,10 +164,10 @@ final class BTCDataProviderTests: XCTestCase {
 
     @MainActor
     func testHTTPErrorRetainsSnapshotAndViewport() async {
-        let provider = BTCDataProvider(candles: candles([10])) { request in
+        let provider = BTCDataProvider(candles: candles([10]), fetchData: { request in
             let response = HTTPURLResponse(url: request.url!, statusCode: 429, httpVersion: nil, headerFields: nil)!
             return (Data("{}".utf8), response)
-        }
+        })
         let revision = provider.revision
 
         await provider.refresh()
@@ -182,11 +182,11 @@ final class BTCDataProviderTests: XCTestCase {
 
     @MainActor
     func testDecodeAndNetworkErrorsRetainExistingData() async {
-        let malformed = BTCDataProvider(candles: candles([10])) { request in
+        let malformed = BTCDataProvider(candles: candles([10]), fetchData: { request in
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             return (Data("[]".utf8), response)
-        }
-        let offline = BTCDataProvider(candles: candles([10])) { _ in throw URLError(.notConnectedToInternet) }
+        })
+        let offline = BTCDataProvider(candles: candles([10]), fetchData: { _ in throw URLError(.notConnectedToInternet) })
 
         for provider in [malformed, offline] {
             let revision = provider.revision

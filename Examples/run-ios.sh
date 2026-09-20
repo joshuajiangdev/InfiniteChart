@@ -3,12 +3,13 @@ set -euo pipefail
 
 usage() {
     cat <<'USAGE'
-Usage: ./Examples/run-ios.sh [--build-only] [SIMULATOR_UDID]
+Usage: ./Examples/run-ios.sh [--build-only] [--demo] [SIMULATOR_UDID]
 
 Build the BTC iOS example directly with Swift Package Manager, then install and
 launch it in an iOS Simulator. No Xcode project or developer account is needed.
 
   --build-only       Build the .app without opening or changing a simulator.
+  --demo             Play the automatic detail demo after launching.
   SIMULATOR_UDID     Use this available iOS simulator instead of choosing an iPhone.
   -h, --help         Show this help.
 
@@ -21,11 +22,13 @@ USAGE
 }
 
 build_only=false
+demo_mode=false
 requested_simulator="${SIMULATOR_UDID:-}"
 positional_simulator=false
 for argument in "$@"; do
     case "$argument" in
         --build-only) build_only=true ;;
+        --demo) demo_mode=true ;;
         -h|--help) usage; exit 0 ;;
         -*) printf 'Unknown option: %s\n' "$argument" >&2; usage >&2; exit 1 ;;
         *)
@@ -127,7 +130,11 @@ if [[ "$simulator_state" != Booted ]]; then
 fi
 xcrun simctl bootstatus "$simulator_udid" -b
 xcrun simctl install "$simulator_udid" "$app_dir"
-xcrun simctl launch --terminate-running-process "$simulator_udid" dev.infinitechart.BTCiOSExample
+launch_arguments=(--terminate-running-process "$simulator_udid" dev.infinitechart.BTCiOSExample)
+if "$demo_mode"; then
+    launch_arguments+=(--demo)
+fi
+xcrun simctl launch "${launch_arguments[@]}"
 printf 'Launched BTC Chart on %s (%s).\n' "$simulator_name" "$simulator_udid"
 
 # Resolve the GUI from the same Xcode installation as xcrun. Launch Services may

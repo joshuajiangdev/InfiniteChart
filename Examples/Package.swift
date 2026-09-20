@@ -10,7 +10,7 @@ let package = Package(
         .executable(name: "BTCiOSExample", targets: ["BTCiOSExample"]),
     ],
     dependencies: [
-        .package(path: ".."),
+        .package(name: "InfiniteChart", path: ".."),
     ],
     targets: [
         .target(

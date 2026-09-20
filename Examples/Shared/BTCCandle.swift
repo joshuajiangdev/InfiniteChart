@@ -1,6 +1,6 @@
 import Foundation
 
-/// One minute of BTC/USD trading. Chart timestamps are milliseconds since 1970.
+/// One bucket of BTC/USD trading. Chart timestamps are milliseconds since 1970.
 public struct BTCCandle: Equatable {
     public let timestamp: Double
     public let low: Double
@@ -15,6 +15,7 @@ enum BTCCandleError: LocalizedError {
     case invalidResponse
     case httpStatus(Int)
     case missingSnapshot
+    case requestedRangeTooLarge
 
     var errorDescription: String? {
         switch self {
@@ -22,37 +23,39 @@ enum BTCCandleError: LocalizedError {
         case .invalidResponse: return "Coinbase returned invalid candle data."
         case .httpStatus(let status): return "Coinbase request failed (HTTP \(status))."
         case .missingSnapshot: return "The bundled BTC/USD snapshot could not be found."
+        case .requestedRangeTooLarge: return "The requested history is too large. Zoom in and try again."
         }
     }
 }
 
 enum CoinbaseCandles {
     /// Coinbase returns [time in seconds, low, high, open, close, volume], newest first.
-    static func decode(_ data: Data) throws -> [BTCCandle] {
+    static func decode(_ data: Data, allowEmpty: Bool = false, deduplicate: Bool = false) throws -> [BTCCandle] {
         let rows: [[Double]]
         do {
             rows = try JSONDecoder().decode([[Double]].self, from: data)
         } catch {
             throw BTCCandleError.invalidResponse
         }
-        guard !rows.isEmpty else { throw BTCCandleError.emptyResponse }
+        guard allowEmpty || !rows.isEmpty else { throw BTCCandleError.emptyResponse }
 
-        var timestamps = Set<Double>()
-        return try rows.map { row in
+        var candlesByTime = [Double: BTCCandle]()
+        for row in rows {
             guard row.count == 6, row.allSatisfy({ $0.isFinite }),
                   row[0] > 0, row[0].truncatingRemainder(dividingBy: 60) == 0,
                   (row[0] * 1_000).isFinite,
                   row[1] > 0, row[2] >= row[1],
                   (row[1]...row[2]).contains(row[3]),
                   (row[1]...row[2]).contains(row[4]), row[5] >= 0,
-                  timestamps.insert(row[0]).inserted else {
+                  deduplicate || candlesByTime[row[0]] == nil else {
                 throw BTCCandleError.invalidResponse
             }
-            return BTCCandle(
+            candlesByTime[row[0]] = BTCCandle(
                 timestamp: row[0] * 1_000, low: row[1], high: row[2],
                 open: row[3], close: row[4], volume: row[5]
             )
-        }.sorted { $0.timestamp < $1.timestamp }
+        }
+        return candlesByTime.values.sorted { $0.timestamp < $1.timestamp }
     }
 }
 
