@@ -4,13 +4,25 @@ import Combine
 
 public class InfiniteChartBase: ChartPlatformView {
 
-    /// Delivered asynchronously on the main actor after navigation or layout changes.
-    /// Rapid changes coalesce to the latest viewport; data-only redraws do not notify.
-    public var onViewportChange: ((ChartViewport) -> Void)? {
-        didSet {
-            lastNotifiedViewport = nil
-            scheduleViewportChange()
-        }
+    /// Subscribe on the main actor to receive the current viewport and navigation
+    /// or layout updates asynchronously. Data-only redraws do not emit values.
+    public var viewportStream: AnyPublisher<ChartViewport, Never> {
+        transformerProvider.transformerStream
+            .map { _ in () }
+            .merge(with: layoutChanges)
+            .map { [weak self] _ in
+                // Read after @Published finishes assigning the transform and layout
+                // finishes updating the plot. Newer signals supersede pending values.
+                Future<ChartViewport?, Never> { promise in
+                    Task { @MainActor [weak self] in
+                        promise(.success(self?.viewport))
+                    }
+                }
+            }
+            .switchToLatest()
+            .compactMap { $0 }
+            .removeDuplicates()
+            .eraseToAnyPublisher()
     }
 
     /// Nil before the first layout or while the plot area is empty.
@@ -20,8 +32,7 @@ public class InfiniteChartBase: ChartPlatformView {
     }
 
     private var hasLaidOutChart = false
-    private var lastNotifiedViewport: ChartViewport?
-    private var isViewportNotificationScheduled = false
+    private let layoutChanges = PassthroughSubject<Void, Never>()
     
     var disposeBag = Set<AnyCancellable>()
     
@@ -47,9 +58,6 @@ public class InfiniteChartBase: ChartPlatformView {
     }()
     
     private func setupObservable() {
-        transformerProvider.transformerStream
-            .sink { [weak self] _ in self?.scheduleViewportChange() }
-            .store(in: &disposeBag)
         Publishers.CombineLatest(
             transformerProvider.$transformer,
             dataProvider.redrawStream
@@ -60,20 +68,6 @@ public class InfiniteChartBase: ChartPlatformView {
         }).store(in: &disposeBag)
     }
     
-    private func scheduleViewportChange() {
-        guard !isViewportNotificationScheduled else { return }
-        isViewportNotificationScheduled = true
-        // @Published emits before its stored value changes. Read the snapshot
-        // after the update finishes, coalescing synchronous changes into one callback.
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            self.isViewportNotificationScheduled = false
-            guard let viewport = self.viewport, viewport != self.lastNotifiedViewport else { return }
-            self.lastNotifiedViewport = viewport
-            self.onViewportChange?(viewport)
-        }
-    }
-
     lazy var xAxisView = XAxisView(frame: .zero)
     lazy var yAxisView = YAxisView(frame: .zero)
     lazy var chartBaseView = ChartBaseView(frame: .zero)
@@ -157,9 +151,9 @@ public class InfiniteChartBase: ChartPlatformView {
             transformerProvider.setChartDimens(width: plotWidth, height: plotHeight)
             hasLaidOutChart = true
             transformerProvider.prepareMatrixValuePx(dataRanges: transformerProvider.initDataRanges)
-            // Size and first layout matter even when the transform is unchanged.
-            scheduleViewportChange()
         }
+        // Layout can make the viewport available without changing the transform.
+        layoutChanges.send(())
         requestChartDisplay()
     }
     

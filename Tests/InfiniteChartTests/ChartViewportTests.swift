@@ -120,7 +120,7 @@ final class ChartViewportTests: XCTestCase {
     }
 
     @MainActor
-    func testCallbackAttachedAfterNavigationReceivesCurrentViewport() async throws {
+    func testLateSubscriberReceivesSettledViewport() async throws {
         let chart = makeChart()
         layout(chart)
         chart.transformerProvider.zoom(scaleX: 2, scaleY: 2, x: 200, y: 150)
@@ -131,17 +131,21 @@ final class ChartViewportTests: XCTestCase {
         await fulfillment(of: [settled], timeout: 2)
         XCTAssertEqual(previousObserver.viewports.count, 1)
 
-        let current = expectation(description: "Current viewport for a new observer")
+        let noRepeat = invertedExpectation("A new subscriber does not notify the existing subscriber again")
+        previousObserver.delivery = noRepeat
+        let current = expectation(description: "Current viewport for a new subscriber")
         let observer = ViewportRecorder(chart: chart, delivery: current)
         await fulfillment(of: [current], timeout: 2)
+        await fulfillment(of: [noRepeat], timeout: 0.1)
 
         XCTAssertEqual(observer.viewports.count, 1)
         try assertViewport(observer.viewports.first, x: 200...700, y: 30...80)
         XCTAssertEqual(chart.viewport, observer.viewports.first)
+        XCTAssertEqual(previousObserver.viewports.count, 1)
     }
 
     @MainActor
-    func testNavigationCallbacksAreDeferredAndCoalesceToCurrentViewport() async throws {
+    func testNavigationNotificationsAreDeferredAndCoalesceToCurrentViewport() async throws {
         let chart = makeChart()
         layout(chart)
         let initial = expectation(description: "Initial viewport")
@@ -149,7 +153,7 @@ final class ChartViewportTests: XCTestCase {
         var isMutatingNavigation = false
         observer.onReceive = { [weak chart] viewport in
             XCTAssertFalse(isMutatingNavigation, "Navigation must finish before notifying the application.")
-            XCTAssertEqual(viewport, chart?.viewport, "The callback must expose the current, completed navigation state.")
+            XCTAssertEqual(viewport, chart?.viewport, "The notification must expose the current, completed navigation state.")
         }
         await fulfillment(of: [initial], timeout: 2)
         observer.viewports.removeAll()
@@ -160,7 +164,7 @@ final class ChartViewportTests: XCTestCase {
         chart.transformerProvider.zoom(scaleX: 2, scaleY: 2, x: 200, y: 150)
         chart.transformerProvider.translate(delta: CGPoint(x: 40, y: 30))
         chart.transformerProvider.translate(delta: CGPoint(x: 40, y: 0))
-        XCTAssertTrue(observer.viewports.isEmpty, "Synchronous navigation must defer its callback.")
+        XCTAssertTrue(observer.viewports.isEmpty, "Synchronous navigation must defer its notification.")
         isMutatingNavigation = false
         await fulfillment(of: [navigated], timeout: 2)
 
@@ -170,22 +174,22 @@ final class ChartViewportTests: XCTestCase {
     }
 
     @MainActor
-    func testNavigationInsideCallbackSchedulesFollowUpWithoutNestedCallbacks() async throws {
+    func testNavigationInsideSubscriberSchedulesFollowUpWithoutNestedNotifications() async throws {
         let chart = makeChart()
         layout(chart)
-        let delivered = expectation(description: "Initial viewport and callback-induced navigation")
+        let delivered = expectation(description: "Initial viewport and subscriber-induced navigation")
         delivered.expectedFulfillmentCount = 2
         let observer = ViewportRecorder(chart: chart, delivery: delivered)
-        var isHandlingCallback = false
+        var isHandlingNotification = false
         observer.onReceive = { [weak chart, weak observer] viewport in
-            XCTAssertFalse(isHandlingCallback, "Application navigation must not invoke a nested callback.")
-            isHandlingCallback = true
-            defer { isHandlingCallback = false }
+            XCTAssertFalse(isHandlingNotification, "Application navigation must not deliver a nested notification.")
+            isHandlingNotification = true
+            defer { isHandlingNotification = false }
             XCTAssertEqual(viewport, chart?.viewport)
 
             if observer?.viewports.count == 1 {
                 chart?.transformerProvider.zoom(scaleX: 2, scaleY: 1, x: 200, y: 150)
-                XCTAssertEqual(observer?.viewports.count, 1, "Navigation from a callback must notify on a later turn.")
+                XCTAssertEqual(observer?.viewports.count, 1, "Navigation from a subscriber must notify on a later turn.")
             }
         }
         XCTAssertTrue(observer.viewports.isEmpty)
@@ -198,7 +202,7 @@ final class ChartViewportTests: XCTestCase {
     }
 
     @MainActor
-    func testProviderRedrawInsideViewportCallbackDoesNotCauseFeedbackOrMoveChart() async throws {
+    func testProviderRedrawInsideSubscriberDoesNotCauseFeedbackOrMoveChart() async throws {
         let provider = ViewportTestProvider()
         let chart = makeChart(provider: provider)
         layout(chart)
@@ -301,6 +305,80 @@ final class ChartViewportTests: XCTestCase {
         XCTAssertEqual(chart.viewport, observer.viewports.first)
     }
 
+    @MainActor
+    func testSubscribersReceiveIndependentlyAndCancellingOneKeepsTheOtherActive() async throws {
+        let chart = makeChart()
+        layout(chart)
+        let firstInitial = expectation(description: "First subscriber's initial viewport")
+        let secondInitial = expectation(description: "Second subscriber's initial viewport")
+        let first = ViewportRecorder(chart: chart, delivery: firstInitial)
+        let second = ViewportRecorder(chart: chart, delivery: secondInitial)
+        await fulfillment(of: [firstInitial, secondInitial], timeout: 2)
+        XCTAssertEqual(first.viewports, second.viewports)
+
+        let cancelled = invertedExpectation("Cancelled subscriber receives no further viewports")
+        first.delivery = cancelled
+        first.cancel()
+        let zoomed = expectation(description: "Active subscriber receives zoomed viewport")
+        second.delivery = zoomed
+        chart.transformerProvider.zoom(scaleX: 2, scaleY: 1, x: 200, y: 150)
+        await fulfillment(of: [zoomed], timeout: 2)
+        await fulfillment(of: [cancelled], timeout: 0.1)
+
+        XCTAssertEqual(first.viewports.count, 1)
+        XCTAssertEqual(second.viewports.count, 2)
+        try assertViewport(second.viewports.last, x: 250...750, y: 0...100)
+    }
+
+    @MainActor
+    func testCancellationSuppressesQueuedInitialAndNavigationNotifications() async throws {
+        let chart = makeChart()
+        layout(chart)
+
+        let noInitial = invertedExpectation("Cancelled subscription suppresses its queued initial viewport")
+        let cancelledImmediately = ViewportRecorder(chart: chart, delivery: noInitial)
+        cancelledImmediately.cancel()
+        await fulfillment(of: [noInitial], timeout: 0.1)
+        XCTAssertTrue(cancelledImmediately.viewports.isEmpty)
+
+        let initial = expectation(description: "Active subscription's initial viewport")
+        let observer = ViewportRecorder(chart: chart, delivery: initial)
+        await fulfillment(of: [initial], timeout: 2)
+        let noNavigation = invertedExpectation("Cancellation suppresses queued navigation")
+        observer.delivery = noNavigation
+        chart.transformerProvider.zoom(scaleX: 2, scaleY: 1, x: 200, y: 150)
+        observer.cancel()
+        await fulfillment(of: [noNavigation], timeout: 0.1)
+
+        XCTAssertEqual(observer.viewports.count, 1)
+        try assertViewport(chart.viewport, x: 250...750, y: 0...100)
+    }
+
+    @MainActor
+    func testSubscribingWhileEmptyDeliversWhenThePreviousPlotSizeIsRestored() async throws {
+        let chart = makeChart()
+        layout(chart)
+        XCTAssertNotNil(chart.viewport)
+        chart.frame = CGRect(x: 0, y: 0, width: 40, height: 30)
+        layout(chart)
+        XCTAssertNil(chart.viewport)
+
+        let noViewport = invertedExpectation("Subscribing while empty does not deliver a stale viewport")
+        let observer = ViewportRecorder(chart: chart, delivery: noViewport)
+        await fulfillment(of: [noViewport], timeout: 0.1)
+        XCTAssertTrue(observer.viewports.isEmpty)
+
+        let restored = expectation(description: "First viewport after the previous plot size is restored")
+        observer.delivery = restored
+        chart.frame = CGRect(x: 0, y: 0, width: 440, height: 330)
+        layout(chart)
+        await fulfillment(of: [restored], timeout: 2)
+
+        XCTAssertEqual(observer.viewports.count, 1)
+        try assertViewport(observer.viewports.first, x: 0...1_000, y: 0...100)
+        XCTAssertEqual(chart.viewport, observer.viewports.first)
+    }
+
     private func invertedExpectation(_ description: String) -> XCTestExpectation {
         let result = expectation(description: description)
         result.isInverted = true
@@ -350,16 +428,22 @@ private final class ViewportRecorder {
         didSet { delivery.assertForOverFulfill = true }
     }
     var onReceive: ((ChartViewport) -> Void)?
+    private var subscription: AnyCancellable?
 
     init(chart: InfiniteChartBase, delivery: XCTestExpectation) {
         self.delivery = delivery
         delivery.assertForOverFulfill = true
-        chart.onViewportChange = { [weak self] viewport in
+        subscription = chart.viewportStream.sink { [weak self] viewport in
             guard let self else { return }
             self.viewports.append(viewport)
             self.onReceive?(viewport)
             self.delivery.fulfill()
         }
+    }
+
+    func cancel() {
+        subscription?.cancel()
+        subscription = nil
     }
 }
 
