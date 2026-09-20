@@ -4,29 +4,12 @@ import Combine
 
 public class InfiniteChartBase: ChartPlatformView {
 
-    /// Emits the current viewport and navigation or layout updates synchronously.
-    /// Subscribe on the main actor and defer any chart mutations from a subscriber.
-    /// Data-only redraws do not emit values.
-    public var viewportStream: AnyPublisher<ChartViewport, Never> {
-        transformerProvider.transformerStream
-            .merge(with: layoutChanges)
-            .compactMap { [weak self] transformer in
-                guard let self, self.hasLaidOutChart,
-                      self.chartBaseView.bounds.width > 0, self.chartBaseView.bounds.height > 0 else { return nil }
-                return self.transformerProvider.viewport(for: transformer)
-            }
-            .removeDuplicates()
-            .eraseToAnyPublisher()
-    }
-
-    /// Nil before the first layout or while the plot area is empty.
-    public var viewport: ChartViewport? {
-        guard hasLaidOutChart, chartBaseView.bounds.width > 0, chartBaseView.bounds.height > 0 else { return nil }
-        return transformerProvider.viewport
-    }
+    /// The current viewport, or nil before layout or while the plot is empty.
+    /// Read `value` for a snapshot or subscribe for changes on the main actor.
+    /// Defer chart mutations from subscribers until the transform update completes.
+    public let viewportStream = CurrentValueSubject<ChartViewport?, Never>(nil)
 
     private var hasLaidOutChart = false
-    private let layoutChanges = PassthroughSubject<AccelerateTransformer, Never>()
     
     var disposeBag = Set<AnyCancellable>()
     
@@ -51,7 +34,20 @@ public class InfiniteChartBase: ChartPlatformView {
         )
     }()
     
+    private func updateViewport(using transformer: AccelerateTransformer) {
+        let viewport = hasLaidOutChart && !chartBaseView.bounds.isEmpty
+            ? transformerProvider.viewport(for: transformer)
+            : nil
+        guard viewport != viewportStream.value else { return }
+        viewportStream.send(viewport)
+    }
+
     private func setupObservable() {
+        transformerProvider.transformerStream
+            .sink { [weak self] transformer in
+                self?.updateViewport(using: transformer)
+            }
+            .store(in: &disposeBag)
         Publishers.CombineLatest(
             transformerProvider.$transformer,
             dataProvider.redrawStream
@@ -147,7 +143,7 @@ public class InfiniteChartBase: ChartPlatformView {
             transformerProvider.prepareMatrixValuePx(dataRanges: transformerProvider.initDataRanges)
         }
         // Layout can make the viewport available without changing the transform.
-        layoutChanges.send(transformerProvider.transformer)
+        updateViewport(using: transformerProvider.transformer)
         requestChartDisplay()
     }
     

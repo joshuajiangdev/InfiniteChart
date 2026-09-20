@@ -42,26 +42,32 @@ Drag to pan and pinch to zoom on either platform. macOS also supports mouse whee
 and trackpad scrolling to pan. Gestures on an axis affect only that axis.
 Use `AxisConfig.labelFormatter` to display timestamps, prices, or other custom labels.
 
-Applications can read `chart.viewport` or subscribe to `chart.viewportStream`:
+Use `chart.viewportStream.value` to read the current viewport, or subscribe to
+`chart.viewportStream` for updates:
 
 ```swift
-let viewportObservation = chart.viewportStream.sink { viewport in
-    print(viewport.visibleXRange)
-    print(viewport.visibleYRange)
-    print(viewport.plotSize)
-}
+let currentViewport = chart.viewportStream.value
+let viewportObservation = chart.viewportStream
+    .compactMap { $0 }
+    .sink { viewport in
+        print(viewport.visibleXRange)
+        print(viewport.visibleYRange)
+        print(viewport.plotSize)
+    }
 ```
 
-Keep the returned `AnyCancellable` alive while observing the chart; cancel it to
-stop receiving updates. Subscribe on the main actor. Each subscription receives
-the current nonempty viewport synchronously, then each distinct transform or
-layout update. Use the supplied snapshot: the transformer publisher emits before
-its stored property finishes updating. If a subscriber changes the chart, defer
-that work with `Task { @MainActor in ... }`. Data-only redraws do not emit values.
+The chart maintains a `CurrentValueSubject<ChartViewport?, Never>`. Its value is
+nil before layout or while the plot is empty; use `compactMap` to observe only
+valid viewports. The value stays current even when no application is subscribed.
+Keep the returned `AnyCancellable` alive while observing the chart.
+
+Read and subscribe on the main actor. Subscriptions receive the current value
+immediately, then each distinct transform or layout update. If a subscriber
+changes the chart, defer that work with `Task { @MainActor in ... }` until the
+transform update completes. Data-only redraws do not publish viewport changes.
 
 `ChartViewport` reports visible X/Y ranges in the provider's data units and plot
-size in points, excluding the axes. `chart.viewport` is nil before the first
-layout or while the plot area is empty; the stream skips those empty states.
+size in points, excluding the axes.
 
 ## Examples
 

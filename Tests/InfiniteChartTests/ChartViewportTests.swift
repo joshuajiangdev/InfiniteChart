@@ -11,9 +11,9 @@ final class ChartViewportTests: XCTestCase {
         let observer = ViewportRecorder(chart: chart)
         observer.onReceive = { _ in XCTAssertTrue(Thread.isMainThread) }
 
-        XCTAssertNil(chart.viewport)
+        XCTAssertNil(chart.viewportStream.value)
         layout(chart)
-        XCTAssertNil(chart.viewport)
+        XCTAssertNil(chart.viewportStream.value)
         XCTAssertTrue(observer.viewports.isEmpty)
 
         chart.frame = CGRect(x: 0, y: 0, width: 440, height: 330)
@@ -21,7 +21,63 @@ final class ChartViewportTests: XCTestCase {
 
         XCTAssertEqual(observer.viewports.count, 1)
         try assertViewport(observer.viewports.first, x: 0...1_000, y: 0...100)
-        XCTAssertEqual(chart.viewport, observer.viewports.first)
+        XCTAssertEqual(chart.viewportStream.value, observer.viewports.first)
+    }
+
+    @MainActor
+    func testSubjectPublishesDistinctOptionalStateAndUpdatesValueBeforeDelivery() throws {
+        let chart = makeChart(frame: .zero)
+        var states: [ChartViewport?] = []
+        let subscription = chart.viewportStream.sink { [weak chart] viewport in
+            guard let chart else { return }
+            XCTAssertEqual(chart.viewportStream.value, viewport)
+            states.append(viewport)
+        }
+        defer { withExtendedLifetime(subscription) {} }
+
+        XCTAssertEqual(states.count, 1)
+        XCTAssertNil(states.first ?? nil)
+        XCTAssertNil(chart.viewportStream.value)
+        layout(chart)
+        XCTAssertEqual(states.count, 1, "Repeated empty layout must not repeat nil.")
+
+        chart.frame = CGRect(x: 0, y: 0, width: 440, height: 330)
+        layout(chart)
+        XCTAssertEqual(states.count, 2)
+        try assertViewport(states.last ?? nil, x: 0...1_000, y: 0...100)
+        let initialViewport = chart.viewportStream.value
+
+        chart.frame = CGRect(x: 0, y: 0, width: 40, height: 330)
+        layout(chart)
+        XCTAssertEqual(states.count, 3)
+        XCTAssertNil(states.last ?? nil)
+        XCTAssertNil(chart.viewportStream.value)
+        layout(chart)
+        XCTAssertEqual(states.count, 3)
+
+        chart.frame = CGRect(x: 0, y: 0, width: 440, height: 330)
+        layout(chart)
+        XCTAssertEqual(states.count, 4, "Restoring the same viewport after nil must notify.")
+        XCTAssertEqual(states.last ?? nil, initialViewport)
+        XCTAssertEqual(chart.viewportStream.value, initialViewport)
+    }
+
+    @MainActor
+    func testCurrentValueTracksNavigationWithoutExternalSubscribers() throws {
+        let chart = makeChart()
+        XCTAssertNil(chart.viewportStream.value)
+        layout(chart)
+        try assertViewport(chart.viewportStream.value, x: 0...1_000, y: 0...100)
+
+        chart.transformerProvider.zoom(scaleX: 2, scaleY: 2, x: 200, y: 150)
+        try assertViewport(chart.viewportStream.value, x: 250...750, y: 25...75)
+        chart.transformerProvider.translate(delta: CGPoint(x: 40, y: 30))
+        try assertViewport(chart.viewportStream.value, x: 200...700, y: 30...80)
+
+        let observer = ViewportRecorder(chart: chart)
+        XCTAssertEqual(observer.viewports.count, 1)
+        XCTAssertEqual(observer.viewports.first, chart.viewportStream.value)
+        try assertViewport(observer.viewports.first, x: 200...700, y: 30...80)
     }
 
     @MainActor
@@ -39,12 +95,12 @@ final class ChartViewportTests: XCTestCase {
             chart.frame = emptyFrame
             layout(chart)
 
-            XCTAssertNil(chart.viewport)
+            XCTAssertNil(chart.viewportStream.value)
             XCTAssertTrue(observer.viewports.isEmpty, "An empty plot must not emit a stale viewport.")
 
             chart.frame = CGRect(x: 0, y: 0, width: 440, height: 330)
             layout(chart)
-            try assertViewport(chart.viewport, x: 0...1_000, y: 0...100)
+            try assertViewport(chart.viewportStream.value, x: 0...1_000, y: 0...100)
         }
     }
 
@@ -55,7 +111,7 @@ final class ChartViewportTests: XCTestCase {
         let observer = ViewportRecorder(chart: chart)
         chart.transformerProvider.zoom(scaleX: 2, scaleY: 2, x: 200, y: 150)
         chart.transformerProvider.translate(delta: CGPoint(x: 40, y: 30))
-        try assertViewport(chart.viewport, x: 200...700, y: 30...80)
+        try assertViewport(chart.viewportStream.value, x: 200...700, y: 30...80)
         observer.viewports.removeAll()
         observer.onReceive = { [weak chart] viewport in
             XCTAssertEqual(viewport.plotSize, chart?.chartBaseView.bounds.size)
@@ -71,7 +127,7 @@ final class ChartViewportTests: XCTestCase {
         try assertViewport(observer.viewports.first,
                            x: topLeft.x...bottomRight.x, y: bottomRight.y...topLeft.y,
                            size: CGSize(width: 800, height: 500))
-        XCTAssertEqual(chart.viewport, observer.viewports.first)
+        XCTAssertEqual(chart.viewportStream.value, observer.viewports.first)
     }
 
     @MainActor
@@ -87,7 +143,7 @@ final class ChartViewportTests: XCTestCase {
 
         XCTAssertEqual(observer.viewports.count, 1, "The current viewport must arrive during subscription.")
         try assertViewport(observer.viewports.first, x: 200...700, y: 30...80)
-        XCTAssertEqual(chart.viewport, observer.viewports.first)
+        XCTAssertEqual(chart.viewportStream.value, observer.viewports.first)
         XCTAssertEqual(previousObserver.viewports.count, 3)
     }
 
@@ -111,7 +167,7 @@ final class ChartViewportTests: XCTestCase {
         chart.transformerProvider.translate(delta: CGPoint(x: 40, y: 0))
         XCTAssertEqual(observer.viewports.count, 3)
         try assertViewport(observer.viewports.last, x: 150...650, y: 30...80)
-        XCTAssertEqual(chart.viewport, observer.viewports.last)
+        XCTAssertEqual(chart.viewportStream.value, observer.viewports.last)
     }
 
     @MainActor
@@ -125,14 +181,14 @@ final class ChartViewportTests: XCTestCase {
 
         chart.transformerProvider.zoom(scaleX: 2, scaleY: 1, x: 200, y: 150)
         XCTAssertEqual(observer.viewports.count, 1)
-        try assertViewport(chart.viewport, x: 250...750, y: 0...100)
-        let navigatedViewport = chart.viewport
+        try assertViewport(chart.viewportStream.value, x: 250...750, y: 0...100)
+        let navigatedViewport = chart.viewportStream.value
 
         provider.redraw.send(())
         provider.redraw.send(())
 
         XCTAssertEqual(observer.viewports.count, 1)
-        XCTAssertEqual(chart.viewport, navigatedViewport)
+        XCTAssertEqual(chart.viewportStream.value, navigatedViewport)
     }
 
     @MainActor
@@ -143,7 +199,7 @@ final class ChartViewportTests: XCTestCase {
         chart.transformerProvider.translate(delta: CGPoint(x: 40, y: 30))
         let observer = ViewportRecorder(chart: chart)
         observer.viewports.removeAll()
-        let originalViewport = chart.viewport
+        let originalViewport = chart.viewportStream.value
 
         layout(chart)
         layout(chart)
@@ -151,8 +207,8 @@ final class ChartViewportTests: XCTestCase {
         chart.transformerProvider.translate(delta: .zero)
 
         XCTAssertTrue(observer.viewports.isEmpty)
-        XCTAssertEqual(chart.viewport, originalViewport)
-        try assertViewport(chart.viewport, x: 200...700, y: 30...80)
+        XCTAssertEqual(chart.viewportStream.value, originalViewport)
+        try assertViewport(chart.viewportStream.value, x: 200...700, y: 30...80)
     }
 
     @MainActor
@@ -168,7 +224,7 @@ final class ChartViewportTests: XCTestCase {
 
         XCTAssertEqual(observer.viewports.count, 1)
         try assertViewport(observer.viewports.first, x: 500...700, y: -20...20)
-        XCTAssertEqual(chart.viewport, observer.viewports.first)
+        XCTAssertEqual(chart.viewportStream.value, observer.viewports.first)
     }
 
     @MainActor
@@ -176,7 +232,7 @@ final class ChartViewportTests: XCTestCase {
         let chart = makeChart(frame: .zero)
         let observer = ViewportRecorder(chart: chart)
         layout(chart)
-        XCTAssertNil(chart.viewport)
+        XCTAssertNil(chart.viewportStream.value)
         XCTAssertTrue(observer.viewports.isEmpty)
 
         // The initial zero-sized view already uses a one-point transform.
@@ -186,7 +242,7 @@ final class ChartViewportTests: XCTestCase {
         XCTAssertEqual(observer.viewports.count, 1)
         try assertViewport(observer.viewports.first, x: 0...1_000, y: 0...100,
                            size: CGSize(width: 1, height: 1))
-        XCTAssertEqual(chart.viewport, observer.viewports.first)
+        XCTAssertEqual(chart.viewportStream.value, observer.viewports.first)
     }
 
     @MainActor
@@ -218,17 +274,17 @@ final class ChartViewportTests: XCTestCase {
         chart.transformerProvider.zoom(scaleX: 2, scaleY: 1, x: 200, y: 150)
 
         XCTAssertTrue(observer.viewports.isEmpty)
-        try assertViewport(chart.viewport, x: 250...750, y: 0...100)
+        try assertViewport(chart.viewportStream.value, x: 250...750, y: 0...100)
     }
 
     @MainActor
     func testSubscribingWhileEmptyDeliversWhenThePreviousPlotSizeIsRestored() throws {
         let chart = makeChart()
         layout(chart)
-        XCTAssertNotNil(chart.viewport)
+        XCTAssertNotNil(chart.viewportStream.value)
         chart.frame = CGRect(x: 0, y: 0, width: 40, height: 30)
         layout(chart)
-        XCTAssertNil(chart.viewport)
+        XCTAssertNil(chart.viewportStream.value)
 
         let observer = ViewportRecorder(chart: chart)
         XCTAssertTrue(observer.viewports.isEmpty)
@@ -238,7 +294,7 @@ final class ChartViewportTests: XCTestCase {
 
         XCTAssertEqual(observer.viewports.count, 1)
         try assertViewport(observer.viewports.first, x: 0...1_000, y: 0...100)
-        XCTAssertEqual(chart.viewport, observer.viewports.first)
+        XCTAssertEqual(chart.viewportStream.value, observer.viewports.first)
     }
 
     private func assertViewport(
@@ -284,8 +340,9 @@ private final class ViewportRecorder {
     private var subscription: AnyCancellable?
 
     init(chart: InfiniteChartBase) {
-        subscription = chart.viewportStream.sink { [weak self] viewport in
-            guard let self else { return }
+        subscription = chart.viewportStream.compactMap { $0 }.sink { [weak self, weak chart] viewport in
+            guard let self, let chart else { return }
+            XCTAssertEqual(chart.viewportStream.value, viewport)
             self.viewports.append(viewport)
             self.onReceive?(viewport)
         }
