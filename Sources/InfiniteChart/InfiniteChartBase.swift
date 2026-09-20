@@ -4,7 +4,7 @@ import Combine
 
 public class InfiniteChartBase: ChartPlatformView {
 
-    /// Delivered on the main queue after navigation or layout changes.
+    /// Delivered asynchronously on the main actor after navigation or layout changes.
     /// Rapid changes coalesce to the latest viewport; data-only redraws do not notify.
     public var onViewportChange: ((ChartViewport) -> Void)? {
         didSet {
@@ -65,7 +65,7 @@ public class InfiniteChartBase: ChartPlatformView {
         isViewportNotificationScheduled = true
         // @Published emits before its stored value changes. Read the snapshot
         // after the update finishes, coalescing synchronous changes into one callback.
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             self.isViewportNotificationScheduled = false
             guard let viewport = self.viewport, viewport != self.lastNotifiedViewport else { return }
