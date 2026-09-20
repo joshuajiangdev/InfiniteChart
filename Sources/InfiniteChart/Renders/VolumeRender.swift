@@ -16,30 +16,26 @@ class VolumeRender {
     
     func drawVolumeChart(context: CGContext, transformerProvider: AffineTransformerProvider, rect: CGRect) {
         let transformer = transformerProvider.transformer
-        
-        var startX = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: 0, y: 0)).x.rounded(.up)
-        startX = dataProvider.getClosestXValue(to: startX, seekBelow: true, offset: 1) ?? startX
-        var endX = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: transformerProvider.chartWidth, y: 0)).x.rounded(.down)
-        endX = dataProvider.getClosestXValue(to: endX, seekBelow: false, offset: 1) ?? endX
-        let step: Double = 60*1000 // Adjust step size as needed
-        
-        // Calculate max volume in visible range
-        var maxVolume: Double = 0
-        for x in stride(from: startX, through: endX, by: step) {
-            if let (volume, _) = dataProvider.getVolumeValueAndColor(for: x) {
-                maxVolume = max(maxVolume, volume)
-            }
+        guard let viewport = transformerProvider.viewport(for: transformer),
+              !rect.isEmpty, rect.height.isFinite else { return }
+
+        let volumes = dataProvider.renderingXValues(in: viewport.visibleXRange).compactMap { x -> (x: Double, volume: Double, color: ChartColor)? in
+            guard viewport.visibleXRange.contains(x),
+                  let (volume, color) = dataProvider.getVolumeValueAndColor(for: x),
+                  volume.isFinite, volume > 0 else { return nil }
+            return (x, volume, color)
         }
-        
-        guard maxVolume > 0 else { return }
+        guard let maxVolume = volumes.map(\.volume).max() else { return }
+
+        context.saveGState()
+        defer { context.restoreGState() }
         
         let barWidth: CGFloat = 2.0
         let volumeHeight = rect.height
         
-        for x in stride(from: startX, through: endX, by: step) {
-            guard let (volume, color) = dataProvider.getVolumeValueAndColor(for: x) else { continue }
-            
+        for (x, volume, color) in volumes {
             let startPoint = transformer.pixelForValue(DoublePrecisionPoint(x: x, y: 0))
+            guard startPoint.x.isFinite else { continue }
             let barHeight = CGFloat(volume / maxVolume) * volumeHeight
             
             let barRect = CGRect(x: startPoint.x - barWidth/2,
