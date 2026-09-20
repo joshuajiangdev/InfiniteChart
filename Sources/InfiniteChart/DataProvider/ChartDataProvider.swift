@@ -56,6 +56,11 @@ public protocol ChartDataProviderBase {
     var technicalIndicators: [TechnicalIndicator] { get }
 }
 
+public extension ChartDataProviderBase {
+    var tranformerUpdatedDelegate: ChartDataProviderDelegate? { nil }
+    var technicalIndicators: [TechnicalIndicator] { [] }
+}
+
 public struct TechnicalIndicator {
     public let name: String
     public let color: ChartColor
