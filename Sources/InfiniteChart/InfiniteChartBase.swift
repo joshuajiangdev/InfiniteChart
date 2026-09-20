@@ -178,6 +178,10 @@ public class InfiniteChartBase: ChartPlatformView {
         let height = bounds.height - xAxisConfig.requiredSpace
         let width = bounds.width - yAxisConfig.requiredSpace
         guard width > 0, height > 0, transformerProvider.hasValidDataRanges else { return }
+
+        context.saveGState()
+        defer { context.restoreGState() }
+        context.clip(to: CGRect(x: 0, y: 0, width: width, height: height))
         
         let mainChartRect = CGRect(x: 0, y: 0, width: width, height: height * 2/3)
         let volumeChartRect = CGRect(x: 0, y: mainChartRect.maxY, width: width, height: height * 1/3)
@@ -186,7 +190,7 @@ public class InfiniteChartBase: ChartPlatformView {
         candleStickRender?.drawCandleStickChart(context: context, transformerProvider: transformerProvider)
         
         // Draw line chart on top
-//        lineRender?.drawSimpleLineChart(context: context, transformerProvider: transformerProvider)
+        lineRender?.drawSimpleLineChart(context: context, transformerProvider: transformerProvider)
         
         // Draw volume chart
         volumeRender?.drawVolumeChart(context: context, transformerProvider: transformerProvider, rect: volumeChartRect)
