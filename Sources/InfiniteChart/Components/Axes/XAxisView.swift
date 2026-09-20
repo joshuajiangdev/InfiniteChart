@@ -53,24 +53,12 @@ class XAxisView: ChartPlatformView, Transformable, Pannable, Pinchable {
     }
     
     func setup() {
-        setupLabels()
         transformerStream?
             .sink(receiveValue: { [weak self] transformer in
                 self?.currentTransformer = transformer
                 self?.setupAxis(transformer: transformer)
             })
             .store(in: &disposeBag)
-    }
-    
-    private func setupLabels() {
-        for _ in 0..<config.labelCount {
-            let label = AxisLabel(frame: .zero)
-            label.font = config.labelFont
-            label.textColor = config.labelColor
-            label.rotationAngle = .pi / 2
-            addSubview(label)
-            labels.append(label)
-        }
     }
     
     func setupAxis(transformer: any Transformer) {
