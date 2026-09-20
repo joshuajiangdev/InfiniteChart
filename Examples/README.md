@@ -47,13 +47,13 @@ The initial chart uses a bundled historical snapshot from Coinbase's public BTC/
 
 The status shows whether candles are bundled or fetched, their interval, and the loaded time range. A pending request keeps the current chart visible. A failed request keeps the previous data and offers **Retry**. After a history failure, Retry reloads the current viewport; after a failed Refresh, it requests recent one-minute candles again. It does not silently substitute locally aggregated candles.
 
-Toggle **SMA 10** and **EMA 10** to show or hide the moving averages. Drag to pan through time, pinch to zoom the time range, or drag the time axis to adjust it. Both examples set `chart.transformableAxes = [.horizontal]`, so gestures leave the price axis fixed.
+Toggle **SMA 10** and **EMA 10** to show or hide the moving averages. Drag to pan through time, pinch to zoom the time range, or drag the time axis to adjust it. Both examples set `chart.transformableAxes = [.horizontal]` to disable manual vertical pan and zoom. The price axis automatically fits the visible candles as you navigate and when data arrives.
 
 ## Try automatic detail on either platform
 
 1. Launch the iOS or macOS example. The label above the chart shows the current candle interval and visible time span. The default view starts with one-minute candles at typical device and window sizes; a very narrow plot may select coarser candles.
 2. Select **Zoom out** (the minus magnifier) repeatedly. The application requests coarser **5-minute** and **15-minute candles** from Coinbase as more time fits into the chart. On macOS, resizing the window can also change the selected detail.
-3. Select **Zoom in** (the plus magnifier) to return to finer candles. Pinching follows the same path. The price chart, volume, and indicators update together when the response arrives. Navigation preserves the price range; loading candles preserves both visible ranges.
+3. Select **Zoom in** (the plus magnifier) to return to finer candles. Pinching follows the same path. The price chart, volume, and indicators update together when the response arrives. Loading candles preserves the visible time range; the application fits the price axis to the visible candles.
 4. Select **Reset** to restore the initial price and time ranges: approximately twenty-six minutes on iOS or ninety-two minutes on macOS, including padding. The interval is then chosen again for the current plot width.
 
 Each remote window covers the visible time range plus a buffer, targeting at least 240 candles: approximately **4 hours at 1m, 20 hours at 5m, and 60 hours at 15m**. Unlike aggregating the four-hour snapshot locally, a coarser remote request loads a longer history. Pan beyond the cached window to load another window at the same resolution. Missing trading intervals stay empty. This example allows visible spans from fifteen minutes to twenty-four hours.
@@ -77,13 +77,13 @@ The macOS recorder captures only the example view. For iOS, build and install th
 
 ### Application-owned selection
 
-`BTCExampleScreen` subscribes to `chart.viewportStream`. `BTCChartControls` retains the subscription and cancels it when attaching a replacement chart. The current-value stream holds the latest viewport in `.value` and publishes transform and layout updates synchronously. The controls skip nil viewports and use a main-actor task to read `.value`, update the provider, and publish the visible span after the transform update completes. The chart reports its visible data ranges and plot size. The example provider uses that information to select a candle interval, with different thresholds for moving to finer versus coarser data so small movements near a boundary do not continually switch levels.
+`BTCExampleScreen` subscribes to `chart.viewportStream`. `BTCChartControls` retains its subscriptions and cancels them when attaching a replacement chart. The current-value stream holds the latest viewport in `.value` and publishes transform and layout updates synchronously. The controls skip nil viewports and Y-only changes, then use a main-actor task to read `.value`, update the provider, publish the visible span, and fit prices after the transform update completes. Provider redraws also trigger price fitting after new candles arrive. The chart reports its visible data ranges and plot size. The example provider uses that information to select a candle interval, with different thresholds for moving to finer versus coarser data so small movements near a boundary do not continually switch levels.
 
 The provider requests Coinbase's native candle buckets using `granularity=60`, `300`, or `900`, together with explicit `start` and `end` timestamps. Requests exceeding Coinbase's 300-candle limit are split into smaller windows, then filtered and deduplicated. See the [Coinbase candle API](https://docs.cdp.coinbase.com/api-reference/exchange-api/rest-api/products/get-product-candles).
 
-Viewport requests are debounced, and responses are cached by resolution and covered time range. Superseded requests are cancelled; a generation check also prevents late responses from replacing newer data. Candles, volume, SMA 10, and EMA 10 swap together after a successful response. Indicators are computed locally from the returned candles; OHLCV candles are not aggregated locally. A data swap preserves both horizontal and vertical navigation. **Refresh** intentionally starts a new viewport around the latest period and invalidates older cached windows.
+Viewport requests are debounced, and responses are cached by resolution and covered time range. Superseded requests are cancelled; a generation check also prevents late responses from replacing newer data. Candles, volume, SMA 10, and EMA 10 swap together after a successful response. Indicators are computed locally from the returned candles; OHLCV candles are not aggregated locally. A data swap preserves horizontal navigation while the application fits the price range. **Refresh** intentionally starts a new viewport around the latest period and invalidates older cached windows.
 
-The library has no BTC timeframe policy or data-fetching logic. The example application owns the intervals, density thresholds, remote requests, cache, and retry behavior.
+The library has no BTC timeframe policy or data-fetching logic. The example application owns the intervals, density thresholds, remote requests, cache, retry behavior, and automatic price fitting.
 
 ## Files and tests
 

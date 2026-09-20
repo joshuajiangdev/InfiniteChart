@@ -468,7 +468,7 @@ final class BTCDetailTransitionTests: XCTestCase {
         XCTAssertEqual(reset.visibleYRange.lowerBound, originalRanges.chartYMin, accuracy: 0.001)
     }
 
-    func testChartControlsPreserveManualYRangeDuringHorizontalNavigation() async throws {
+    func testHorizontalOnlyChartControlsFitPricesAfterLatestHorizontalNavigation() async throws {
         #if !canImport(UIKit)
         _ = NSApplication.shared
         #endif
@@ -478,6 +478,7 @@ final class BTCDetailTransitionTests: XCTestCase {
             frame: CGRect(x: 0, y: 0, width: 800, height: 400), dataProvider: provider,
             xAxisConfig: AxisConfig(requiredSpace: 30), yAxisConfig: AxisConfig(requiredSpace: 40)
         )
+        chart.transformableAxes = [.horizontal]
         #if canImport(UIKit)
         chart.setNeedsLayout()
         chart.layoutIfNeeded()
@@ -488,13 +489,20 @@ final class BTCDetailTransitionTests: XCTestCase {
         chart.setVisibleYRange(0...1_000)
         let originalYRange = try XCTUnwrap(chart.viewportStream.value).visibleYRange
         let requestedRange = (fixtureCenter - 20 * minute)...(fixtureCenter + 20 * minute)
+        let priceRange = try XCTUnwrap(provider.priceRange(in: requestedRange))
         let controls = BTCChartControls()
+        let fitted = expectation(description: "Visible prices fitted after horizontal navigation")
+        let fitObservation = chart.viewportStream
+            .compactMap { $0 }
+            .filter { abs($0.visibleYRange.lowerBound - priceRange.lowerBound) < 0.001 }
+            .prefix(1)
+            .sink { _ in fitted.fulfill() }
         let spanUpdated = expectation(description: "Visible span published after attachment")
         let spanObservation = controls.$visibleSpanText
             .filter { $0 == "Viewing 40m · UTC" }
             .prefix(1)
             .sink { _ in spanUpdated.fulfill() }
-        defer { withExtendedLifetime((controls, spanObservation)) {} }
+        defer { withExtendedLifetime((controls, fitObservation, spanObservation)) {} }
 
         controls.attach(chart, provider: provider)
         chart.setVisibleXRange((fixtureCenter - 200 * minute)...(fixtureCenter + 200 * minute))
@@ -502,18 +510,19 @@ final class BTCDetailTransitionTests: XCTestCase {
         let completedXRange = try XCTUnwrap(chart.viewportStream.value).visibleXRange
         XCTAssertEqual(completedXRange.lowerBound, requestedRange.lowerBound, accuracy: 0.001)
         XCTAssertEqual(completedXRange.upperBound, requestedRange.upperBound, accuracy: 0.001)
-        XCTAssertEqual(chart.viewportStream.value?.visibleYRange, originalYRange)
+        XCTAssertEqual(chart.viewportStream.value?.visibleYRange, originalYRange, "Price fitting must wait for navigation to finish.")
         XCTAssertEqual(controls.visibleSpanText, "Preparing chart…", "Attachment must defer SwiftUI state changes.")
 
-        await fulfillment(of: [spanUpdated], timeout: 2)
+        await fulfillment(of: [fitted, spanUpdated], timeout: 2)
         let viewport = try XCTUnwrap(chart.viewportStream.value)
-        XCTAssertEqual(viewport.visibleXRange, completedXRange)
-        XCTAssertEqual(viewport.visibleYRange, originalYRange, "Horizontal navigation must retain the user's vertical range.")
+        XCTAssertEqual(viewport.visibleXRange, completedXRange, "Automatic price fitting must preserve the latest horizontal range exactly.")
+        XCTAssertEqual(viewport.visibleYRange.lowerBound, priceRange.lowerBound, accuracy: 0.001)
+        XCTAssertEqual(viewport.visibleYRange.upperBound, priceRange.upperBound, accuracy: 0.001)
         XCTAssertEqual(provider.candleIntervalMinutes, 1)
         await assertRequestCount(0, transport)
     }
 
-    func testChartControlsPreserveManualYRangeAfterDetailLoadsAndRedraws() async throws {
+    func testHorizontalOnlyChartControlsRefitRemotePricesWithoutRedrawLoop() async throws {
         #if !canImport(UIKit)
         _ = NSApplication.shared
         #endif
@@ -523,6 +532,7 @@ final class BTCDetailTransitionTests: XCTestCase {
             frame: CGRect(x: 0, y: 0, width: 800, height: 400), dataProvider: provider,
             xAxisConfig: AxisConfig(requiredSpace: 30), yAxisConfig: AxisConfig(requiredSpace: 40)
         )
+        chart.transformableAxes = [.horizontal]
         #if canImport(UIKit)
         chart.setNeedsLayout()
         chart.layoutIfNeeded()
@@ -531,27 +541,39 @@ final class BTCDetailTransitionTests: XCTestCase {
         chart.layoutSubtreeIfNeeded()
         #endif
         chart.setVisibleYRange(50...250)
-        let manualYRange = try XCTUnwrap(chart.viewportStream.value).visibleYRange
         let controls = BTCChartControls()
         controls.attach(chart, provider: provider)
         chart.setVisibleXRange((fixtureCenter - 200 * minute)...(fixtureCenter + 200 * minute))
         let navigatedViewport = try XCTUnwrap(chart.viewportStream.value)
 
         await waitForRequests(1, transport)
-        XCTAssertEqual(chart.viewportStream.value?.visibleYRange, manualYRange)
-        let unchanged = expectation(description: "Data changes must not move the viewport")
-        unchanged.isInverted = true
-        let observation = chart.viewportStream.dropFirst().sink { _ in unchanged.fulfill() }
-        defer { withExtendedLifetime((controls, observation)) {} }
-
         try await transport.succeed(0)
         await provider.waitForPendingRequest()
         XCTAssertEqual(provider.candleIntervalMinutes, 5)
+        let priceRange = try XCTUnwrap(provider.priceRange(in: navigatedViewport.visibleXRange))
+        let fitted = expectation(description: "Price axis fitted to fetched five-minute candles")
+        let fitObservation = chart.viewportStream
+            .compactMap { $0 }
+            .filter { abs($0.visibleYRange.lowerBound - priceRange.lowerBound) < 0.001 }
+            .prefix(1)
+            .sink { _ in fitted.fulfill() }
+        await fulfillment(of: [fitted], timeout: 2)
+
+        let fittedViewport = try XCTUnwrap(chart.viewportStream.value)
+        XCTAssertEqual(fittedViewport.visibleXRange, navigatedViewport.visibleXRange,
+                       "Replacing detail and fitting prices must preserve the horizontal range exactly.")
+        XCTAssertEqual(fittedViewport.visibleYRange.lowerBound, priceRange.lowerBound, accuracy: 0.001)
+        XCTAssertEqual(fittedViewport.visibleYRange.upperBound, priceRange.upperBound, accuracy: 0.001)
+
+        let unchanged = expectation(description: "Indicator redraw must not emit another viewport")
+        unchanged.isInverted = true
+        let observation = chart.viewportStream.dropFirst().sink { _ in unchanged.fulfill() }
+        defer { withExtendedLifetime((controls, fitObservation, observation)) {} }
         provider.showingEMA = true
         await fulfillment(of: [unchanged], timeout: 0.1)
 
-        XCTAssertEqual(chart.viewportStream.value, navigatedViewport,
-                       "Remote detail replacement and indicator redraws must preserve manual navigation.")
+        XCTAssertEqual(chart.viewportStream.value, fittedViewport)
+        await assertRequestCount(1, transport)
     }
 
     func testInvalidViewportsDoNotRequestRemoteData() async {

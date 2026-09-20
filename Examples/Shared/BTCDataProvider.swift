@@ -182,6 +182,14 @@ public final class BTCDataProvider: ObservableObject, CandleStickDataProvider, V
         await loadTask?.value
     }
 
+    /// Padded price bounds for candles whose time buckets intersect the visible range.
+    public func priceRange(in range: ClosedRange<Double>) -> ClosedRange<Double>? {
+        let visible = candles.filter { $0.timestamp <= range.upperBound && $0.timestamp + nominalXStep > range.lowerBound }
+        guard let low = visible.map(\.low).min(), let high = visible.map(\.high).max() else { return nil }
+        let padding = max((high - low) * 0.12, high * 0.001, 1)
+        return (low - padding)...(high + padding)
+    }
+
     /// Returns real bucket timestamps inside the requested inclusive range.
     /// Gaps stay empty; all OHLCV values come from Coinbase at the displayed granularity.
     public func getXValues(in range: ClosedRange<Double>) -> [Double] {
