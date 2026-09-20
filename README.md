@@ -54,9 +54,10 @@ let viewportObservation = chart.viewportStream.sink { viewport in
 
 Keep the returned `AnyCancellable` alive while observing the chart; cancel it to
 stop receiving updates. Subscribe on the main actor. Each subscription receives
-the current nonempty viewport asynchronously and then distinct updates derived
-from the existing transformer stream and layout. Rapid synchronous changes
-coalesce to the latest snapshot, and data-only redraws do not emit values.
+the current nonempty viewport synchronously, then each distinct transform or
+layout update. Use the supplied snapshot: the transformer publisher emits before
+its stored property finishes updating. If a subscriber changes the chart, defer
+that work with `Task { @MainActor in ... }`. Data-only redraws do not emit values.
 
 `ChartViewport` reports visible X/Y ranges in the provider's data units and plot
 size in points, excluding the axes. `chart.viewport` is nil before the first

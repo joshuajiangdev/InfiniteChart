@@ -4,23 +4,17 @@ import Combine
 
 public class InfiniteChartBase: ChartPlatformView {
 
-    /// Subscribe on the main actor to receive the current viewport and navigation
-    /// or layout updates asynchronously. Data-only redraws do not emit values.
+    /// Emits the current viewport and navigation or layout updates synchronously.
+    /// Subscribe on the main actor and defer any chart mutations from a subscriber.
+    /// Data-only redraws do not emit values.
     public var viewportStream: AnyPublisher<ChartViewport, Never> {
         transformerProvider.transformerStream
-            .map { _ in () }
             .merge(with: layoutChanges)
-            .map { [weak self] _ in
-                // Read after @Published finishes assigning the transform and layout
-                // finishes updating the plot. Newer signals supersede pending values.
-                Future<ChartViewport?, Never> { promise in
-                    Task { @MainActor [weak self] in
-                        promise(.success(self?.viewport))
-                    }
-                }
+            .compactMap { [weak self] transformer in
+                guard let self, self.hasLaidOutChart,
+                      self.chartBaseView.bounds.width > 0, self.chartBaseView.bounds.height > 0 else { return nil }
+                return self.transformerProvider.viewport(for: transformer)
             }
-            .switchToLatest()
-            .compactMap { $0 }
             .removeDuplicates()
             .eraseToAnyPublisher()
     }
@@ -32,7 +26,7 @@ public class InfiniteChartBase: ChartPlatformView {
     }
 
     private var hasLaidOutChart = false
-    private let layoutChanges = PassthroughSubject<Void, Never>()
+    private let layoutChanges = PassthroughSubject<AccelerateTransformer, Never>()
     
     var disposeBag = Set<AnyCancellable>()
     
@@ -153,7 +147,7 @@ public class InfiniteChartBase: ChartPlatformView {
             transformerProvider.prepareMatrixValuePx(dataRanges: transformerProvider.initDataRanges)
         }
         // Layout can make the viewport available without changing the transform.
-        layoutChanges.send(())
+        layoutChanges.send(transformerProvider.transformer)
         requestChartDisplay()
     }
     

@@ -19,6 +19,10 @@ final public class AccelerateTransformerProvider: TransformerProviding {
 
     /// A snapshot derived from the existing transform and plot dimensions.
     var viewport: ChartViewport? {
+        viewport(for: transformer)
+    }
+
+    func viewport(for transformer: AccelerateTransformer) -> ChartViewport? {
         let size = CGSize(width: chartWidth, height: chartHeight)
         guard size.width > 0, size.height > 0 else { return nil }
         let topLeft = transformer.valueForTouchPoint(.zero)
