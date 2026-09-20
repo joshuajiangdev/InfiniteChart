@@ -10,21 +10,31 @@ import CoreGraphics
 class CandleStickLineRender {
     let dataProvider: any CandleStickDataProvider
     
+    /// Creates a renderer that reads candle values and colors from the provider.
     init(dataProvider: any CandleStickDataProvider) {
         self.dataProvider = dataProvider
     }
     
+    /// Draws available candles across the current viewport, including boundary neighbors.
+    ///
+    /// Skips missing or nonfinite samples and transformed coordinates. Candle bodies
+    /// are four points wide and at least one point tall, including flat candles.
+    /// Restores the graphics state after drawing; the caller controls clipping.
+    ///
+    /// - Parameters:
+    ///   - context: The drawing context in plot coordinates.
+    ///   - transformerProvider: Supplies the current transform and visible X range.
     func drawCandleStickChart(context: CGContext, transformerProvider: AffineTransformerProvider) {
         let transformer = transformerProvider.transformer
-        
-        var startX = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: 0, y: 0)).x.rounded(.up)
-        startX = dataProvider.getClosestXValue(to: startX, seekBelow: true, offset: 1) ?? startX
-        var endX = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: transformerProvider.chartWidth, y: 0)).x.rounded(.down)
-        endX = dataProvider.getClosestXValue(to: endX, seekBelow: false, offset: 1) ?? endX
-        let step: Double = 60*1000 // Adjust step size as needed
-        
-        for x in stride(from: startX, through: endX, by: step) {
-            guard let candleStick = dataProvider.getCandleStickDataPoint(for: x) else {
+        guard let viewport = transformerProvider.viewport else { return }
+        context.saveGState()
+        defer { context.restoreGState() }
+        context.setLineWidth(1)
+
+        for x in dataProvider.renderingXValues(in: viewport.visibleXRange) {
+            guard let candleStick = dataProvider.getCandleStickDataPoint(for: x),
+                  candleStick.high.isFinite, candleStick.low.isFinite,
+                  candleStick.open.isFinite, candleStick.close.isFinite else {
                 continue
             }
             
@@ -32,6 +42,8 @@ class CandleStickLineRender {
             let low = transformer.pixelForValue(DoublePrecisionPoint(x: x, y: candleStick.low))
             let open = transformer.pixelForValue(DoublePrecisionPoint(x: x, y: candleStick.open))
             let close = transformer.pixelForValue(DoublePrecisionPoint(x: x, y: candleStick.close))
+            guard high.x.isFinite, high.y.isFinite, low.y.isFinite,
+                  open.y.isFinite, close.y.isFinite else { continue }
             
             // Draw the wick
             context.move(to: CGPoint(x: high.x, y: high.y))
@@ -41,7 +53,7 @@ class CandleStickLineRender {
             
             // Draw the body
             let bodyRect = CGRect(x: open.x - 2, y: min(open.y, close.y),
-                                  width: 4, height: abs(close.y - open.y))
+                                  width: 4, height: max(1, abs(close.y - open.y)))
             context.setFillColor(candleStick.color.cgColor)
             context.fill(bodyRect)
         }
