@@ -8,7 +8,7 @@
 import Foundation
 import Combine
 
-class YAxisView: ChartPlatformView, Transformable, Pannable, Pinchable {
+final class YAxisView: ChartPlatformView, Transformable, Pannable, Pinchable {
     
     // MARK: - Transformable
     
@@ -17,10 +17,9 @@ class YAxisView: ChartPlatformView, Transformable, Pannable, Pinchable {
     var transformableAxes: [TransformableAxis] = [.vertical]
     var transformerStream: AnyPublisher<AffineTransformer, Never>?
     
-    var config: AxisConfig!
+    var config = AxisConfig()
     
     private var entries: [Double] = []
-    private var centeredEntries: [Double] = []
     
     private var labels: [AxisLabel] = []
     
@@ -33,12 +32,14 @@ class YAxisView: ChartPlatformView, Transformable, Pannable, Pinchable {
     
     private var oldBounds: CGRect = .zero
     
+    /// Creates an axis view with a white background and native pan and pinch gestures.
     override init(frame: CGRect) {
         super.init(frame: frame)
         configureChartAppearance(background: .white)
         setupGestureRecognizers()
     }
     
+    /// Traps because axis views must be initialized with a frame instead of an archive.
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
@@ -50,15 +51,20 @@ class YAxisView: ChartPlatformView, Transformable, Pannable, Pinchable {
         )
     }
     
+    /// Replaces the transform subscription and requests a redraw.
     func setup() {
+        disposeBag.removeAll()
         transformerStream?
             .sink(receiveValue: { [weak self] transformer in
                 self?.currentTransformer = transformer
                 self?.setupAxis(transformer: transformer)
             })
             .store(in: &disposeBag)
+        requestChartDisplay()
     }
     
+    /// Refreshes tick values and labels for the visible range, then requests layout.
+    /// - Parameter transformer: Converts the current axis bounds to data coordinates.
     func setupAxis(transformer: any Transformer) {
         let min = transformer.valueForTouchPoint(CGPoint(x: 0, y: bounds.height)).y
         let max = transformer.valueForTouchPoint(CGPoint(x: 0, y: 0)).y
@@ -67,71 +73,16 @@ class YAxisView: ChartPlatformView, Transformable, Pannable, Pinchable {
         requestChartLayout()
     }
     
+    /// Replaces tick values for the supplied data range using the current configuration.
+    /// - Parameters:
+    ///   - min: One endpoint of the visible data range.
+    ///   - max: The other endpoint; reversed endpoints are supported.
     func computeAxisValues(min: Double, max: Double) {
-        let range = abs(max - min)
-        
-        let rawInterval = range / Double(config.labelCount)
-        var interval = rawInterval.roundedToNextSignificant()
-        // TODO: Use granularity
-        interval = Swift.max(interval, 0.001)
-        
-        let intervalMagnitude = pow(10.0, Double(Int(log10(interval)))).roundedToNextSignificant()
-        let intervalSigDigit = Int(interval / intervalMagnitude)
-        if intervalSigDigit > 5
-        {
-            // Use one order of magnitude higher, to avoid intervals like 0.9 or 90
-            interval = floor(10.0 * Double(intervalMagnitude))
-        }
-        
-        var n = config.centerAxisLabelsEnabled ? 1 : 0
-        
-        var first = interval == 0.0 ? 0.0 : ceil(min / interval) * interval
-
-        if config.centerAxisLabelsEnabled
-        {
-            first -= interval
-        }
-
-        let last = interval == 0.0 ? 0.0 : (floor(max / interval) * interval).nextUp
-
-        if interval != 0.0, last != first
-        {
-            stride(from: first, through: last, by: interval).forEach { _ in
-                n += 1
-            }
-        }
-
-        // Ensure stops contains at least n elements.
-        entries.removeAll(keepingCapacity: true)
-        entries.reserveCapacity(config.labelCount)
-
-        let start = first, end = first + Double(n) * interval
-
-        // Fix for IEEE negative zero case (Where value == -0.0, and 0.0 == -0.0)
-        let values = stride(from: start, to: end, by: interval).map { $0 == 0.0 ? 0.0 : $0 }
-        entries.append(contentsOf: values)
-        
-        var decimals = 0
-        // set decimals
-        if interval < 1
-        {
-            decimals = Int(ceil(-log10(interval)))
-        }
-        else
-        {
-            decimals = 0
-        }
-
-        if config.centerAxisLabelsEnabled
-        {
-            let offset: Double = interval / 2.0
-            centeredEntries = entries[..<n]
-                .map { $0 + offset }
-        }
+        entries = AxisTicks.values(min: min, max: max, config: config)
     }
     
     private func updateLabels() {
-        let valuesToUse = config.centerAxisLabelsEnabled ? centeredEntries : entries
+        let valuesToUse = entries
         
         // Remove excess labels
         while labels.count > valuesToUse.count {
@@ -150,10 +101,25 @@ class YAxisView: ChartPlatformView, Transformable, Pannable, Pinchable {
         
         // Update label texts
         for (index, label) in labels.enumerated() {
+            label.font = config.labelFont
+            label.textColor = config.labelColor
             label.text = config.labelFormatter?(valuesToUse[index]) ?? String(format: "%.2f", valuesToUse[index])
         }
     }
+
+    /// Draws the border along the plot edge using the configured axis color.
+    override func draw(_ rect: CGRect) {
+        guard let context = currentChartGraphicsContext() else { return }
+        context.saveGState()
+        defer { context.restoreGState() }
+        context.setStrokeColor(config.axisColor.cgColor)
+        context.setLineWidth(1)
+        context.move(to: CGPoint(x: 0.5, y: 0))
+        context.addLine(to: CGPoint(x: 0.5, y: bounds.height))
+        context.strokePath()
+    }
     
+    /// Refreshes ticks after bounds changes and positions labels using the latest received transform.
     override func layoutChartSubviews() {
         super.layoutChartSubviews()
         
@@ -165,14 +131,14 @@ class YAxisView: ChartPlatformView, Transformable, Pannable, Pinchable {
             oldBounds = self.bounds
             setupAxis(transformer: transformer)
         }
-        let labelWidth: CGFloat = 50
+        let labelWidth = bounds.width
         
         for (index, label) in labels.enumerated() {
-            let value = config.centerAxisLabelsEnabled ? centeredEntries[index] : entries[index]
+            let value = entries[index]
             let yPosition = transformer.pixelForValue(DoublePrecisionPoint(x: 0, y: value)).y
             
             label.frame = CGRect(
-                x: bounds.width - labelWidth,
+                x: 0,
                 y: yPosition - label.intrinsicContentSize.height / 2,
                 width: labelWidth,
                 height: label.intrinsicContentSize.height
@@ -180,10 +146,12 @@ class YAxisView: ChartPlatformView, Transformable, Pannable, Pinchable {
         }
     }
     
+    /// Forwards a native pan gesture to the handler for the enabled axis.
     @objc func handlePanGesture(_ gesture: ChartPanGestureRecognizer) {
         self.panGestureHandler(gesture)
     }
 
+    /// Forwards a native pinch gesture to the handler for the enabled axis.
     @objc func handlePinchGesture(_ gesture: ChartPinchGestureRecognizer) {
         self.pinchGestureHandler(gesture)
     }
