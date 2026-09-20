@@ -14,13 +14,3 @@ public struct ChartViewport: Equatable, Sendable {
         self.plotSize = plotSize
     }
 }
-
-/// Describes navigation without exposing the chart's transformation matrices.
-public struct ChartViewportChange: Sendable {
-    public enum Reason: Sendable {
-        case initial, zoom, pan, resize, programmatic
-    }
-
-    public let viewport: ChartViewport
-    public let reason: Reason
-}

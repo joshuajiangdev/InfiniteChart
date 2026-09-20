@@ -6,10 +6,10 @@ public class InfiniteChartBase: ChartPlatformView {
 
     /// Delivered on the main queue after navigation or layout changes.
     /// Rapid changes coalesce to the latest viewport; data-only redraws do not notify.
-    public var onViewportChange: ((ChartViewportChange) -> Void)? {
+    public var onViewportChange: ((ChartViewport) -> Void)? {
         didSet {
             lastNotifiedViewport = nil
-            scheduleViewportChange(reason: .initial)
+            scheduleViewportChange()
         }
     }
 
@@ -21,7 +21,7 @@ public class InfiniteChartBase: ChartPlatformView {
 
     private var hasLaidOutChart = false
     private var lastNotifiedViewport: ChartViewport?
-    private var pendingViewportReason: ChartViewportChange.Reason?
+    private var isViewportNotificationScheduled = false
     
     var disposeBag = Set<AnyCancellable>()
     
@@ -47,8 +47,8 @@ public class InfiniteChartBase: ChartPlatformView {
     }()
     
     private func setupObservable() {
-        transformerProvider.viewportChanges
-            .sink { [weak self] reason in self?.scheduleViewportChange(reason: reason) }
+        transformerProvider.transformerStream
+            .sink { [weak self] _ in self?.scheduleViewportChange() }
             .store(in: &disposeBag)
         Publishers.CombineLatest(
             transformerProvider.$transformer,
@@ -60,16 +60,17 @@ public class InfiniteChartBase: ChartPlatformView {
         }).store(in: &disposeBag)
     }
     
-    private func scheduleViewportChange(reason: ChartViewportChange.Reason) {
-        let alreadyScheduled = pendingViewportReason != nil
-        pendingViewportReason = reason
-        guard !alreadyScheduled else { return }
+    private func scheduleViewportChange() {
+        guard !isViewportNotificationScheduled else { return }
+        isViewportNotificationScheduled = true
+        // @Published emits before its stored value changes. Read the snapshot
+        // after the update finishes, coalescing synchronous changes into one callback.
         DispatchQueue.main.async { [weak self] in
-            guard let self, let reason = self.pendingViewportReason else { return }
-            self.pendingViewportReason = nil
+            guard let self else { return }
+            self.isViewportNotificationScheduled = false
             guard let viewport = self.viewport, viewport != self.lastNotifiedViewport else { return }
             self.lastNotifiedViewport = viewport
-            self.onViewportChange?(ChartViewportChange(viewport: viewport, reason: reason))
+            self.onViewportChange?(viewport)
         }
     }
 
@@ -153,12 +154,11 @@ public class InfiniteChartBase: ChartPlatformView {
 
         if plotWidth > 0, plotHeight > 0,
            !hasLaidOutChart || plotWidth != transformerProvider.chartWidth || plotHeight != transformerProvider.chartHeight {
-            let reason: ChartViewportChange.Reason = hasLaidOutChart ? .resize : .initial
             transformerProvider.setChartDimens(width: plotWidth, height: plotHeight)
             hasLaidOutChart = true
-            transformerProvider.prepareMatrixValuePx(dataRanges: transformerProvider.initDataRanges, reason: reason)
+            transformerProvider.prepareMatrixValuePx(dataRanges: transformerProvider.initDataRanges)
             // Size and first layout matter even when the transform is unchanged.
-            scheduleViewportChange(reason: reason)
+            scheduleViewportChange()
         }
         requestChartDisplay()
     }

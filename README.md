@@ -45,20 +45,20 @@ Use `AxisConfig.labelFormatter` to display timestamps, prices, or other custom l
 Applications can read `chart.viewport` or observe `chart.onViewportChange`:
 
 ```swift
-chart.onViewportChange = { change in
-    print(change.viewport.visibleXRange)
-    print(change.viewport.visibleYRange)
-    print(change.viewport.plotSize)
+chart.onViewportChange = { viewport in
+    print(viewport.visibleXRange)
+    print(viewport.visibleYRange)
+    print(viewport.plotSize)
 }
 ```
 
 `ChartViewport` is an immutable snapshot derived from the existing coordinate
 transform. It reports visible X/Y ranges in the provider's data units and plot
 size in points, excluding the axes. `chart.viewport` is nil before the first
-layout or while the plot area is empty. Changes report an initial, pan, zoom, resize, or programmatic
-reason. Callbacks arrive on the main queue, coalesce rapid changes to the latest
-snapshot and reason, and suppress unchanged viewports. Attaching a callback
-after layout delivers the current viewport. Data-only redraws do not notify.
+layout or while the plot area is empty. Callbacks arrive on the main queue,
+coalesce rapid changes to the latest snapshot, and suppress unchanged viewports.
+Attaching a callback after layout delivers the current viewport. Data-only
+redraws do not notify.
 
 ## Examples
 

@@ -29,7 +29,6 @@ final public class AccelerateTransformerProvider: TransformerProviding {
                              visibleYRange: bottomRight.y...topLeft.y, plotSize: size)
     }
 
-    let viewportChanges = PassthroughSubject<ChartViewportChange.Reason, Never>()
     
     private(set) var valueToPixelMatrix: [Double] {
         didSet {
@@ -81,7 +80,7 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         chartHeight = height
     }
     
-    func prepareMatrixValuePx(dataRanges: DataRanges, reason: ChartViewportChange.Reason = .programmatic) {
+    func prepareMatrixValuePx(dataRanges: DataRanges) {
         let scaleX = (chartWidth / dataRanges.deltaX)
         let scaleY = (chartHeight / dataRanges.deltaY)
         
@@ -101,7 +100,6 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         vDSP_mmulD(matrixA, 1, matrixB, 1, &result, 1, 3, 3, 3)
         
         valueToPixelMatrix = result
-        viewportChanges.send(reason)
     }
     
     public func zoom(scaleX: CGFloat, scaleY: CGFloat, x: CGFloat = 0, y: CGFloat = 0) {
@@ -124,7 +122,6 @@ final public class AccelerateTransformerProvider: TransformerProviding {
             return
         }
         valueToPixelMatrix = newMatrix
-        viewportChanges.send(.zoom)
     }
     
     public func translate(delta: CGPoint) {
@@ -137,7 +134,6 @@ final public class AccelerateTransformerProvider: TransformerProviding {
         newMatrix[7] = newTy
         
         valueToPixelMatrix = newMatrix
-        viewportChanges.send(.pan)
     }
 }
 
