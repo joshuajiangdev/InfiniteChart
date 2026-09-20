@@ -3,6 +3,13 @@ import CoreGraphics
 import Combine
 
 public class InfiniteChartBase: ChartPlatformView {
+
+    /// The current viewport, or nil before layout or while the plot is empty.
+    /// Read `value` for a snapshot or subscribe for changes on the main actor.
+    /// Defer chart mutations from subscribers until the transform update completes.
+    public let viewportStream = CurrentValueSubject<ChartViewport?, Never>(nil)
+
+    private var hasLaidOutChart = false
     
     var disposeBag = Set<AnyCancellable>()
     
@@ -27,7 +34,20 @@ public class InfiniteChartBase: ChartPlatformView {
         )
     }()
     
+    private func updateViewport(using transformer: AccelerateTransformer) {
+        let viewport = hasLaidOutChart && !chartBaseView.bounds.isEmpty
+            ? transformerProvider.viewport(for: transformer)
+            : nil
+        guard viewport != viewportStream.value else { return }
+        viewportStream.send(viewport)
+    }
+
     private func setupObservable() {
+        transformerProvider.transformerStream
+            .sink { [weak self] transformer in
+                self?.updateViewport(using: transformer)
+            }
+            .store(in: &disposeBag)
         Publishers.CombineLatest(
             transformerProvider.$transformer,
             dataProvider.redrawStream
@@ -117,10 +137,13 @@ public class InfiniteChartBase: ChartPlatformView {
         )
 
         if plotWidth > 0, plotHeight > 0,
-           plotWidth != transformerProvider.chartWidth || plotHeight != transformerProvider.chartHeight {
+           !hasLaidOutChart || plotWidth != transformerProvider.chartWidth || plotHeight != transformerProvider.chartHeight {
             transformerProvider.setChartDimens(width: plotWidth, height: plotHeight)
+            hasLaidOutChart = true
             transformerProvider.prepareMatrixValuePx(dataRanges: transformerProvider.initDataRanges)
         }
+        // Layout can make the viewport available without changing the transform.
+        updateViewport(using: transformerProvider.transformer)
         requestChartDisplay()
     }
     

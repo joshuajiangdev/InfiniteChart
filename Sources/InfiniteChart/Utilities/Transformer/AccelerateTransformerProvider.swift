@@ -16,6 +16,19 @@ final public class AccelerateTransformerProvider: TransformerProviding {
     
     private(set) var chartWidth: CGFloat = 0
     private(set) var chartHeight: CGFloat = 0
+
+    /// A snapshot derived from the existing transform and plot dimensions.
+    func viewport(for transformer: AccelerateTransformer) -> ChartViewport? {
+        let size = CGSize(width: chartWidth, height: chartHeight)
+        guard size.width > 0, size.height > 0 else { return nil }
+        let topLeft = transformer.valueForTouchPoint(.zero)
+        let bottomRight = transformer.valueForTouchPoint(CGPoint(x: size.width, y: size.height))
+        guard topLeft.x.isFinite, topLeft.y.isFinite, bottomRight.x.isFinite, bottomRight.y.isFinite,
+              topLeft.x < bottomRight.x, bottomRight.y < topLeft.y else { return nil }
+        return ChartViewport(visibleXRange: topLeft.x...bottomRight.x,
+                             visibleYRange: bottomRight.y...topLeft.y, plotSize: size)
+    }
+
     
     private(set) var valueToPixelMatrix: [Double] {
         didSet {

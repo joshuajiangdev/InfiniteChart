@@ -42,6 +42,33 @@ Drag to pan and pinch to zoom on either platform. macOS also supports mouse whee
 and trackpad scrolling to pan. Gestures on an axis affect only that axis.
 Use `AxisConfig.labelFormatter` to display timestamps, prices, or other custom labels.
 
+Use `chart.viewportStream.value` to read the current viewport, or subscribe to
+`chart.viewportStream` for updates:
+
+```swift
+let currentViewport = chart.viewportStream.value
+let viewportObservation = chart.viewportStream
+    .compactMap { $0 }
+    .sink { viewport in
+        print(viewport.visibleXRange)
+        print(viewport.visibleYRange)
+        print(viewport.plotSize)
+    }
+```
+
+The chart maintains a `CurrentValueSubject<ChartViewport?, Never>`. Its value is
+nil before layout or while the plot is empty; use `compactMap` to observe only
+valid viewports. The value stays current even when no application is subscribed.
+Keep the returned `AnyCancellable` alive while observing the chart.
+
+Read and subscribe on the main actor. Subscriptions receive the current value
+immediately, then each distinct transform or layout update. If a subscriber
+changes the chart, defer that work with `Task { @MainActor in ... }` until the
+transform update completes. Data-only redraws do not publish viewport changes.
+
+`ChartViewport` reports visible X/Y ranges in the provider's data units and plot
+size in points, excluding the axes.
+
 ## Examples
 
 The standalone [Examples package](Examples/README.md) includes native macOS and
