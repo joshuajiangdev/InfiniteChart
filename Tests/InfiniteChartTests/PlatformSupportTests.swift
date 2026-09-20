@@ -9,6 +9,47 @@ import AppKit
 @testable import InfiniteChart
 
 final class PlatformSupportTests: XCTestCase {
+    func testNativeDrawingSupportsLineOnlyProviders() async throws {
+        try await MainActor.run {
+            let chart = InfiniteChartBase(
+                frame: CGRect(x: 0, y: 0, width: 440, height: 330),
+                dataProvider: LineOnlyTestDataProvider(),
+                xAxisConfig: AxisConfig(requiredSpace: 30),
+                yAxisConfig: AxisConfig(requiredSpace: 40)
+            )
+            layout(chart)
+            let pixels = try render(chart)
+            let yellowPixels = stride(from: 0, to: pixels.count, by: 4).filter {
+                pixels[$0] > 180 && pixels[$0 + 1] > 180 && pixels[$0 + 2] < 80 && pixels[$0 + 3] > 180
+            }
+            XCTAssertGreaterThan(yellowPixels.count, 100)
+        }
+    }
+
+    func testNativeDrawingClipsCandlesAndOverlaysToThePlot() async throws {
+        try await MainActor.run {
+            let chart = InfiniteChartBase(
+                frame: CGRect(x: 0, y: 0, width: 440, height: 330),
+                dataProvider: PlotClippingTestDataProvider(),
+                xAxisConfig: AxisConfig(requiredSpace: 30),
+                yAxisConfig: AxisConfig(requiredSpace: 40)
+            )
+            layout(chart)
+            let pixels = try render(chart)
+            var plotPixels = 0
+            var axisPixels = 0
+            for y in 0..<330 {
+                for x in 0..<440 {
+                    let offset = (y * 440 + x) * 4
+                    guard pixels[offset] > 180, pixels[offset + 1] < 80, pixels[offset + 3] > 180 else { continue }
+                    if x < 400, y < 300 { plotPixels += 1 } else { axisPixels += 1 }
+                }
+            }
+            XCTAssertGreaterThan(plotPixels, 100, "The visible portion of the candle and overlay must still render.")
+            XCTAssertEqual(axisPixels, 0, "Red candles and magenta overlays must not paint over either axis.")
+        }
+    }
+
     func testAxisFormattersRenderConsumerLabels() async {
         await MainActor.run {
             let chart = InfiniteChartBase(
@@ -393,5 +434,38 @@ private struct PlatformTestDataProvider: CandleStickDataProvider, VolumeDataProv
     func getVolumeValueAndColor(for xValue: Double) -> (volume: Double, color: ChartColor)? {
         guard (60_000...180_000).contains(xValue) else { return nil }
         return (volume: xValue / 60_000, color: .blue)
+    }
+}
+
+private struct LineOnlyTestDataProvider: LineChartDataProvider {
+    let redrawStream = Empty<Void, Never>().eraseToAnyPublisher()
+
+    func getInitDataRanges() -> DataRanges? {
+        DataRanges(chartXMin: 0, deltaX: 4, chartYMin: 0, deltaY: 10)
+    }
+
+    func getClosestXValue(to xValue: Double, seekBelow: Bool, offset: Int) -> Double? {
+        let rounded = xValue.rounded(seekBelow ? .down : .up)
+        return min(4, max(0, rounded + Double(seekBelow ? -offset : offset)))
+    }
+
+    func getYValue(for xValue: Double) -> Double? { 5 }
+}
+
+private struct PlotClippingTestDataProvider: CandleStickDataProvider {
+    let redrawStream = Just(()).eraseToAnyPublisher()
+    let technicalIndicators = [TechnicalIndicator(
+        name: "Clipped overlay", color: .magenta,
+        dataPoints: [(x: 1, y: 5), (x: 5, y: 5)]
+    )]
+
+    func getInitDataRanges() -> DataRanges? {
+        DataRanges(chartXMin: 0, deltaX: 4, chartYMin: 0, deltaY: 10)
+    }
+
+    func getClosestXValue(to xValue: Double, seekBelow: Bool, offset: Int) -> Double? { 2 }
+
+    func getCandleStickDataPoint(for xValue: Double) -> CandleStickDataPoint? {
+        CandleStickDataPoint(high: 1, low: -1, open: 0.5, close: -0.5, color: .red)
     }
 }

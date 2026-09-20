@@ -28,32 +28,35 @@ public protocol ChartDataProviderDelegate: AnyObject {
 
 public protocol ChartDataProviderBase {
     
+    /// Emit after data changes. An initial event is not required.
     var redrawStream: AnyPublisher<Void, Never> { get }
-    
+
+    /// Legacy compatibility hook; observe the chart's viewportStream for changes.
     var tranformerUpdatedDelegate: ChartDataProviderDelegate? { get }
-    
-    /**
-     Get initial data range
-     
-     - Parameter for: The target value we want to get y value of
-     
-     - Returns: DataRanges
-     */
+
+    /// Finite initial bounds with positive spans, or nil while data is unavailable.
     func getInitDataRanges() -> DataRanges?
     
     /**
-     Get nearest x value
+     Find an available x value at or below/above the target.
      
      - Parameter
         to: The target value we want to find the nearest x value to
-        seekBelow: boolean to indicate search to bottom or above
-        offset: how many extra data point to skip
+        seekBelow: true searches at or below the target; false searches at or above it
+        offset: number of additional available points to move in that direction
 
-     - Returns: The nearest x value to what we passed in
+     - Returns: A finite x value, or nil if no point is available. At a data boundary,
+       implementations may return nil or clamp to the first/last point. At an exact
+       match, offset 0 returns that point and offset 1 advances to its neighbor.
      */
     func getClosestXValue(to xValue: Double, seekBelow: Bool, offset: Int) -> Double?
     
     var technicalIndicators: [TechnicalIndicator] { get }
+}
+
+public extension ChartDataProviderBase {
+    var tranformerUpdatedDelegate: ChartDataProviderDelegate? { nil }
+    var technicalIndicators: [TechnicalIndicator] { [] }
 }
 
 public struct TechnicalIndicator {
@@ -70,13 +73,7 @@ public struct TechnicalIndicator {
 
 public protocol LineChartDataProvider: ChartDataProviderBase {
     
-    /**
-     Get the y value for the target x value
-     
-     - Parameter for: The target value we want to get y value of
-     
-     - Returns: The corresponding y value or nil if no value
-     */
+    /// The Y value at an available X coordinate, or nil to leave a line gap.
     func getYValue(for xValue: Double) -> Double?
 }
 
@@ -98,13 +95,7 @@ public struct CandleStickDataPoint {
 
 public protocol CandleStickDataProvider: ChartDataProviderBase {
     
-    /**
-     Get the y value for the target x value
-     
-     - Parameter for: The target value we want to get y value of
-     
-     - Returns: The corresponding y value or nil if no value
-     */
+    /// The candle at an available X coordinate, or nil to omit it.
     func getCandleStickDataPoint(for xValue: Double) -> CandleStickDataPoint?
 }
 
