@@ -233,9 +233,14 @@ final class BTCChartControls: ObservableObject {
         }
         guard let viewport = chart.viewportStream.value else { return }
         let range = viewport.visibleXRange
-        let center = range.lowerBound + (range.upperBound - range.lowerBound) / 2
+        let initialSpan = range.upperBound - range.lowerBound
+        let center = range.lowerBound + initialSpan / 2 - 120 * 60_000
         let width = Double(viewport.plotSize.width)
         let spacing = 10.0 // Also clears the app's threshold for returning to 1m.
+
+        // Move into the loaded history before changing its detail level.
+        try await animate(chart, center: center, span: initialSpan, duration: 3)
+        try await hold(chart, stage: "panned two hours into history", duration: 2)
 
         for (interval, duration) in [(1, 1.0), (5, 2.0), (15, 2.0), (1, 3.0)] {
             let requestedSpan = width * Double(interval) * 60_000 / spacing
@@ -253,13 +258,15 @@ final class BTCChartControls: ObservableObject {
     private func animate(_ chart: InfiniteChartBase, center: Double, span: Double, duration: Double) async throws {
         guard let range = chart.viewportStream.value?.visibleXRange else { return }
         let initialSpan = range.upperBound - range.lowerBound
+        let initialCenter = range.lowerBound + initialSpan / 2
         let frames = Int(duration * 30)
         for frame in 1...frames {
             try Task.checkCancellation()
             let progress = Double(frame) / Double(frames)
             let eased = progress * progress * (3 - 2 * progress)
             let currentSpan = exp(log(initialSpan) + (log(span) - log(initialSpan)) * eased)
-            chart.setVisibleXRange((center - currentSpan / 2)...(center + currentSpan / 2))
+            let currentCenter = initialCenter + (center - initialCenter) * eased
+            chart.setVisibleXRange((currentCenter - currentSpan / 2)...(currentCenter + currentSpan / 2))
             try await Task.sleep(nanoseconds: 33_333_333)
         }
     }

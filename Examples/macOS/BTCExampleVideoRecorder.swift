@@ -19,7 +19,7 @@ final class BTCExampleVideoRecorder: NSObject {
 
     private static let width = 1100
     private static let height = 760
-    private static let framesPerSecond = 20
+    private static let framesPerSecond = 30
 
     init(view: NSView, outputURL: URL, duration: TimeInterval,
          completion: @escaping (Result<URL, Error>) -> Void) throws {

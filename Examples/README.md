@@ -60,14 +60,14 @@ Each remote window covers the visible time range plus a buffer, targeting at lea
 
 ### Play or record the demo
 
-Pass `--demo` to play **1m → 5m → 15m → 1m**, followed by Reset. It uses the same viewport API and remote requests as the controls. The sequence takes about twenty seconds plus network time and waits for pending data at each stop:
+Pass `--demo` to pan two hours into the loaded history, then play **1m → 5m → 15m → 1m** around that historical position, followed by Reset. It uses the same viewport API and remote requests as the controls. The sequence takes about twenty-five seconds plus network time and waits for pending data at each stop:
 
 ```sh
 swift run --package-path Examples BTCMacExample --demo
 ./Examples/run-ios.sh --demo
 ```
 
-To save the macOS example's content as an H.264 video and exit:
+To save the macOS example's content as a 30 fps H.264 video and exit:
 
 ```sh
 swift run --package-path Examples BTCMacExample --demo --record-video /tmp/btc-macos.mp4 --record-duration 40
