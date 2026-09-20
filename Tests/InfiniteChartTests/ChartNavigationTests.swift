@@ -5,6 +5,48 @@ import XCTest
 final class ChartNavigationTests: XCTestCase {
 
     @MainActor
+    func testHorizontalOnlyPlotAndXAxisGesturesPreserveVerticalRange() throws {
+        let chart = makeChart()
+        chart.transformableAxes = [.horizontal]
+        layout(chart)
+        let originalYRange = try XCTUnwrap(chart.viewportStream.value).visibleYRange
+        let views: [any Pannable & Pinchable] = [chart.chartBaseView, chart.xAxisView]
+
+        for view in views {
+            chart.resetViewport()
+            view.pan(by: CGPoint(x: 40, y: 30))
+            let panned = try XCTUnwrap(chart.viewportStream.value)
+            XCTAssertEqual(panned.visibleXRange.lowerBound, -100, accuracy: 0.0001)
+            XCTAssertEqual(panned.visibleXRange.upperBound, 900, accuracy: 0.0001)
+            XCTAssertEqual(panned.visibleYRange, originalYRange)
+
+            let pinch = NavigationPinchGestureRecognizer(target: nil, action: nil)
+            pinch.chartScale = 2
+            view.pinchGestureHandler(pinch)
+            let zoomed = try XCTUnwrap(chart.viewportStream.value)
+            XCTAssertEqual(zoomed.visibleXRange.lowerBound, 150, accuracy: 0.0001)
+            XCTAssertEqual(zoomed.visibleXRange.upperBound, 650, accuracy: 0.0001)
+            XCTAssertEqual(zoomed.visibleYRange, originalYRange)
+        }
+    }
+
+    @MainActor
+    func testHorizontalOnlyYAxisGesturesLeaveViewportUnchanged() throws {
+        let chart = makeChart()
+        chart.transformableAxes = [.horizontal]
+        layout(chart)
+        let original = try XCTUnwrap(chart.viewportStream.value)
+
+        chart.yAxisView.pan(by: CGPoint(x: 40, y: 30))
+        XCTAssertEqual(chart.viewportStream.value, original)
+
+        let pinch = NavigationPinchGestureRecognizer(target: nil, action: nil)
+        pinch.chartScale = 2
+        chart.yAxisView.pinchGestureHandler(pinch)
+        XCTAssertEqual(chart.viewportStream.value, original)
+    }
+
+    @MainActor
     func testNavigationAndResizePreserveVisibleRange() throws {
         let chart = makeChart()
         layout(chart)
@@ -252,6 +294,17 @@ final class ChartNavigationTests: XCTestCase {
         #else
         chart.layout()
         #endif
+    }
+}
+
+private final class NavigationPinchGestureRecognizer: ChartPinchGestureRecognizer {
+    override var state: ChartPinchGestureRecognizer.State {
+        get { .changed }
+        set {}
+    }
+
+    override func location(in view: ChartNativeView?) -> CGPoint {
+        CGPoint(x: 50, y: 60)
     }
 }
 

@@ -9,6 +9,17 @@ public class InfiniteChartBase: ChartPlatformView {
     /// Defer chart mutations from subscribers until the transform update completes.
     public let viewportStream = CurrentValueSubject<ChartViewport?, Never>(nil)
 
+    /// Axes that pan and zoom gestures can change. Both are enabled by default.
+    /// Axis views respond only when their axis is included.
+    public var transformableAxes: [TransformableAxis] {
+        get { chartBaseView.transformableAxes }
+        set {
+            chartBaseView.transformableAxes = newValue
+            xAxisView.transformableAxes = newValue.filter { $0 == .horizontal }
+            yAxisView.transformableAxes = newValue.filter { $0 == .vertical }
+        }
+    }
+
     /// Optional positive, finite horizontal span limits in the provider's X units.
     /// Nil leaves the horizontal span unrestricted. Invalid limits are ignored.
     public var xSpanLimits: ClosedRange<Double>? {

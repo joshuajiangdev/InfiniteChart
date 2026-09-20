@@ -40,6 +40,8 @@ and `UIFont` on iOS. Existing iOS providers can continue using UIKit types.
 
 Drag to pan and pinch to zoom on either platform. macOS also supports mouse wheel
 and trackpad scrolling to pan. Gestures on an axis affect only that axis.
+Set `chart.transformableAxes = [.horizontal]` to restrict gestures to the time axis,
+as the BTC examples do. Both axes are enabled by default.
 Use `AxisConfig.labelFormatter` to display timestamps, prices, or other custom labels.
 
 Applications can read `chart.viewportStream.value` or subscribe to updates to choose a data resolution:
@@ -76,7 +78,7 @@ subscribers. Use `compactMap` to observe only valid viewports.
 Read and subscribe on the main actor. Each subscription receives the current value
 immediately, then each distinct transform or layout update. If a subscriber changes
 the chart, defer that work with `Task { @MainActor in ... }` until the transform
-update completes, as the BTC example does for price-axis fitting. Data-only redraws
+update completes. Data-only redraws
 do not publish viewport changes. Applications loading data asynchronously should
 discard superseded responses and preserve the latest viewport when applying data.
 

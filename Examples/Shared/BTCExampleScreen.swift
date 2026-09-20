@@ -131,7 +131,7 @@ public struct BTCExampleScreen: View {
                 Text("Zoom for remote 1m / 5m / 15m candles · Pan to load more history")
                     .font(.caption2)
                     .foregroundColor(.secondary)
-                Text("Drag to pan · Pinch or use + / − to zoom · Drag an axis to adjust it")
+                Text("Drag to pan through time · Pinch or use + / − to zoom time")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
@@ -289,6 +289,7 @@ private func makeBTCChart(provider: BTCDataProvider, controls: BTCChartControls)
     )
     // This application's X values are Unix milliseconds. Detail selection lives
     // in BTCDataProvider; the chart only reports its viewport and renders data.
+    chart.transformableAxes = [.horizontal]
     chart.xSpanLimits = (15 * 60_000.0)...(24 * 60 * 60_000.0)
     controls.attach(chart, provider: provider)
     return chart

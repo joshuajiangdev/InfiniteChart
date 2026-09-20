@@ -7,7 +7,7 @@
 
 import Combine
 
-enum TransformableAxis {
+public enum TransformableAxis {
     case horizontal
     case vertical
 }
