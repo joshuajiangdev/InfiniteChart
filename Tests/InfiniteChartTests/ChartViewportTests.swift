@@ -357,7 +357,6 @@ private final class ViewportRecorder {
 private final class ViewportTestProvider: ChartDataProviderBase {
     let redraw = CurrentValueSubject<Void, Never>(())
     var redrawStream: AnyPublisher<Void, Never> { redraw.eraseToAnyPublisher() }
-    weak var tranformerUpdatedDelegate: (any ChartDataProviderDelegate)?
     var technicalIndicators: [TechnicalIndicator] { [] }
     func getInitDataRanges() -> DataRanges? {
         DataRanges(chartXMin: 0, deltaX: 1_000, chartYMin: 0, deltaY: 100)
