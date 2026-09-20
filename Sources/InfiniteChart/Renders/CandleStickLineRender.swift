@@ -14,7 +14,7 @@ class CandleStickLineRender {
         self.dataProvider = dataProvider
     }
     
-    func drawCandleStickChart(context: CGContext, transformerProvider: AccelerateTransformerProvider) {
+    func drawCandleStickChart(context: CGContext, transformerProvider: AffineTransformerProvider) {
         let transformer = transformerProvider.transformer
         
         var startX = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: 0, y: 0)).x.rounded(.up)

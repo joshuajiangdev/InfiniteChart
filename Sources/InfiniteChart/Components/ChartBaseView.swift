@@ -11,9 +11,9 @@ import Combine
 class ChartBaseView: ChartPlatformView, Transformable, Pannable, Pinchable {
     
     // MARK: - Transformable
-    var transformerStream: AnyPublisher<AccelerateTransformer, Never>?
+    var transformerStream: AnyPublisher<AffineTransformer, Never>?
     
-    typealias TransformerType = AccelerateTransformer
+    typealias TransformerType = AffineTransformer
     
     var transformerProvider: (any TransformerProviding)?
     
