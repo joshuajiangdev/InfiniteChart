@@ -147,30 +147,19 @@ final class BTCChartControls: ObservableObject {
     @Published private(set) var visibleSpanText = "Preparing chart…"
     private(set) weak var chart: InfiniteChartBase?
     private weak var provider: BTCDataProvider?
-    private var dataObservation: AnyCancellable?
     private var viewportObservation: AnyCancellable?
-    private var lastAutoFitXRange: ClosedRange<Double>?
     private var demoTask: Task<Void, Never>?
 
     func attach(_ chart: InfiniteChartBase, provider: BTCDataProvider) {
         demoTask?.cancel()
-        dataObservation?.cancel()
         viewportObservation?.cancel()
         self.chart = chart
         self.provider = provider
-        lastAutoFitXRange = nil
-        dataObservation = provider.redrawStream
-            .sink { [weak self, weak chart] _ in
-                Task { @MainActor [weak self, weak chart] in
-                    guard let self, let chart, self.chart === chart else { return }
-                    self.fitPriceRange()
-                }
-            }
         viewportObservation = chart.viewportStream
             .compactMap { $0 }
             .sink { [weak self, weak provider, weak chart] _ in
-                // Finish the transform/layout update before fitting prices or
-                // publishing SwiftUI state, and use the latest completed viewport.
+                // Finish the transform/layout update before publishing SwiftUI
+                // state, and use the latest completed viewport.
                 Task { @MainActor [weak self, weak provider, weak chart] in
                     guard let self, let chart, self.chart === chart,
                           let viewport = chart.viewportStream.value else { return }
@@ -201,18 +190,6 @@ final class BTCChartControls: ObservableObject {
         else if remainder == 0 { span = "\(hours)h" }
         else { span = "\(hours)h \(remainder)m" }
         visibleSpanText = "Viewing \(span) · UTC"
-        if lastAutoFitXRange != viewport.visibleXRange {
-            lastAutoFitXRange = viewport.visibleXRange
-            fitPriceRange()
-        }
-    }
-
-    // Application policy: fit prices after horizontal navigation or a data
-    // replacement. The chart retains its exact horizontal range throughout.
-    private func fitPriceRange() {
-        guard let chart, let viewport = chart.viewportStream.value,
-              let range = provider?.priceRange(in: viewport.visibleXRange) else { return }
-        chart.setVisibleYRange(range)
     }
 
     func zoomIn() { scaleVisibleRange(by: 0.5) }

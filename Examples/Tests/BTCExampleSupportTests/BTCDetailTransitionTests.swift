@@ -207,7 +207,7 @@ final class BTCDetailTransitionTests: XCTestCase {
         provider.updateViewport(ChartViewport(visibleXRange: failed.visibleXRange, visibleYRange: 1...2, plotSize: failed.plotSize))
         await provider.waitForPendingRequest()
         await assertRequestCount(1, transport)
-        XCTAssertNotNil(provider.errorMessage, "An auto-fit Y callback must not clear errors or repeatedly retry the same failed request.")
+        XCTAssertNotNil(provider.errorMessage, "A Y-only viewport change must not clear errors or repeatedly retry the same failed request.")
 
         let retry = Task { await provider.retryFailedLoad() }
         await waitForRequests(2, transport)
@@ -468,7 +468,7 @@ final class BTCDetailTransitionTests: XCTestCase {
         XCTAssertEqual(reset.visibleYRange.lowerBound, originalRanges.chartYMin, accuracy: 0.001)
     }
 
-    func testChartControlsDeferPriceFitAndPreserveLatestHorizontalNavigation() async throws {
+    func testChartControlsPreserveManualYRangeDuringHorizontalNavigation() async throws {
         #if !canImport(UIKit)
         _ = NSApplication.shared
         #endif
@@ -488,20 +488,13 @@ final class BTCDetailTransitionTests: XCTestCase {
         chart.setVisibleYRange(0...1_000)
         let originalYRange = try XCTUnwrap(chart.viewportStream.value).visibleYRange
         let requestedRange = (fixtureCenter - 20 * minute)...(fixtureCenter + 20 * minute)
-        let priceRange = try XCTUnwrap(provider.priceRange(in: requestedRange))
         let controls = BTCChartControls()
-        let fitted = expectation(description: "Prices fitted after navigation completes")
-        let fitObservation = chart.viewportStream
-            .compactMap { $0 }
-            .filter { abs($0.visibleYRange.lowerBound - priceRange.lowerBound) < 0.001 }
-            .prefix(1)
-            .sink { _ in fitted.fulfill() }
         let spanUpdated = expectation(description: "Visible span published after attachment")
         let spanObservation = controls.$visibleSpanText
             .filter { $0 == "Viewing 40m · UTC" }
             .prefix(1)
             .sink { _ in spanUpdated.fulfill() }
-        defer { withExtendedLifetime((controls, fitObservation, spanObservation)) {} }
+        defer { withExtendedLifetime((controls, spanObservation)) {} }
 
         controls.attach(chart, provider: provider)
         chart.setVisibleXRange((fixtureCenter - 200 * minute)...(fixtureCenter + 200 * minute))
@@ -509,16 +502,56 @@ final class BTCDetailTransitionTests: XCTestCase {
         let completedXRange = try XCTUnwrap(chart.viewportStream.value).visibleXRange
         XCTAssertEqual(completedXRange.lowerBound, requestedRange.lowerBound, accuracy: 0.001)
         XCTAssertEqual(completedXRange.upperBound, requestedRange.upperBound, accuracy: 0.001)
-        XCTAssertEqual(chart.viewportStream.value?.visibleYRange, originalYRange, "Price fitting must wait for navigation to finish.")
+        XCTAssertEqual(chart.viewportStream.value?.visibleYRange, originalYRange)
         XCTAssertEqual(controls.visibleSpanText, "Preparing chart…", "Attachment must defer SwiftUI state changes.")
 
-        await fulfillment(of: [fitted, spanUpdated], timeout: 2)
+        await fulfillment(of: [spanUpdated], timeout: 2)
         let viewport = try XCTUnwrap(chart.viewportStream.value)
-        XCTAssertEqual(viewport.visibleXRange, completedXRange, "Subscriber-induced price fitting must preserve the latest horizontal range.")
-        XCTAssertEqual(viewport.visibleYRange.lowerBound, priceRange.lowerBound, accuracy: 0.001)
-        XCTAssertEqual(viewport.visibleYRange.upperBound, priceRange.upperBound, accuracy: 0.001)
+        XCTAssertEqual(viewport.visibleXRange, completedXRange)
+        XCTAssertEqual(viewport.visibleYRange, originalYRange, "Horizontal navigation must retain the user's vertical range.")
         XCTAssertEqual(provider.candleIntervalMinutes, 1)
         await assertRequestCount(0, transport)
+    }
+
+    func testChartControlsPreserveManualYRangeAfterDetailLoadsAndRedraws() async throws {
+        #if !canImport(UIKit)
+        _ = NSApplication.shared
+        #endif
+        let transport = ControlledHistoryTransport()
+        let provider = makeProvider(transport: transport)
+        let chart = InfiniteChartBase(
+            frame: CGRect(x: 0, y: 0, width: 800, height: 400), dataProvider: provider,
+            xAxisConfig: AxisConfig(requiredSpace: 30), yAxisConfig: AxisConfig(requiredSpace: 40)
+        )
+        #if canImport(UIKit)
+        chart.setNeedsLayout()
+        chart.layoutIfNeeded()
+        #else
+        chart.needsLayout = true
+        chart.layoutSubtreeIfNeeded()
+        #endif
+        chart.setVisibleYRange(50...250)
+        let manualYRange = try XCTUnwrap(chart.viewportStream.value).visibleYRange
+        let controls = BTCChartControls()
+        controls.attach(chart, provider: provider)
+        chart.setVisibleXRange((fixtureCenter - 200 * minute)...(fixtureCenter + 200 * minute))
+        let navigatedViewport = try XCTUnwrap(chart.viewportStream.value)
+
+        await waitForRequests(1, transport)
+        XCTAssertEqual(chart.viewportStream.value?.visibleYRange, manualYRange)
+        let unchanged = expectation(description: "Data changes must not move the viewport")
+        unchanged.isInverted = true
+        let observation = chart.viewportStream.dropFirst().sink { _ in unchanged.fulfill() }
+        defer { withExtendedLifetime((controls, observation)) {} }
+
+        try await transport.succeed(0)
+        await provider.waitForPendingRequest()
+        XCTAssertEqual(provider.candleIntervalMinutes, 5)
+        provider.showingEMA = true
+        await fulfillment(of: [unchanged], timeout: 0.1)
+
+        XCTAssertEqual(chart.viewportStream.value, navigatedViewport,
+                       "Remote detail replacement and indicator redraws must preserve manual navigation.")
     }
 
     func testInvalidViewportsDoNotRequestRemoteData() async {
