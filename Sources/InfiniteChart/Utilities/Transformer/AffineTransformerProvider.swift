@@ -4,16 +4,16 @@ import Combine
 /// Maintains chart coordinates using Core Graphics affine transforms.
 /// Scales must be positive and finite; invalid updates leave the transform unchanged.
 public final class AffineTransformerProvider: TransformerProviding {
-    let initDataRanges: DataRanges
     private(set) var chartWidth: CGFloat
     private(set) var chartHeight: CGFloat
     private(set) var hasValidDataRanges = false
 
     @Published private(set) var transformer: AffineTransformer
-    lazy var transformerStream: AnyPublisher<AffineTransformer, Never> = $transformer.eraseToAnyPublisher()
+    lazy var transformerStream: AnyPublisher<AffineTransformer, Never> = $transformer
+        .filter { [weak self] _ in self?.hasValidDataRanges == true }
+        .eraseToAnyPublisher()
 
     public init(size: CGSize, dataRanges: DataRanges) {
-        initDataRanges = dataRanges
         chartWidth = size.width.isFinite && size.width > 0 ? size.width : 1
         chartHeight = size.height.isFinite && size.height > 0 ? size.height : 1
         // Keep an invertible placeholder until a provider supplies valid ranges.
@@ -33,9 +33,16 @@ public final class AffineTransformerProvider: TransformerProviding {
                              plotSize: CGSize(width: chartWidth, height: chartHeight))
     }
 
+    /// Resize the plot without resetting its visible data ranges.
     func setChartDimens(width: CGFloat, height: CGFloat) {
+        guard width.isFinite, height.isFinite, width > 0, height > 0 else { return }
+        let resized = transformer.valueToPixelTransform.concatenating(
+            CGAffineTransform(scaleX: width / chartWidth, y: height / chartHeight)
+        )
+        guard let next = AffineTransformer(valueToPixel: resized) else { return }
         chartWidth = width
         chartHeight = height
+        publish(next)
     }
 
     func prepareMatrixValuePx(dataRanges: DataRanges) {

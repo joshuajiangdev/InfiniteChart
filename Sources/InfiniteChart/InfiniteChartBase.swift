@@ -20,11 +20,9 @@ public class InfiniteChartBase: ChartPlatformView {
     let xAxisConfig: AxisConfig
     let yAxisConfig: AxisConfig
 
-    // TODO: Clear config/setup flow
     lazy var transformerProvider: AffineTransformerProvider = {
-        guard let dataRanges = dataProvider.getInitDataRanges() else {
-            fatalError("Failed to get data ranges from BTCDataFetcher")
-        }
+        let dataRanges = dataProvider.getInitDataRanges()
+            ?? DataRanges(chartXMin: 0, deltaX: 0, chartYMin: 0, deltaY: 0)
         
         return AffineTransformerProvider(
             // Constraint-based layouts commonly create the view at zero size.
@@ -48,13 +46,19 @@ public class InfiniteChartBase: ChartPlatformView {
                 self?.updateViewport(using: transformer)
             }
             .store(in: &disposeBag)
-        Publishers.CombineLatest(
-            transformerProvider.$transformer,
+        Publishers.Merge(
+            transformerProvider.transformerStream.map { _ in () }.eraseToAnyPublisher(),
             dataProvider.redrawStream
         )
         .receive(on: DispatchQueue.main)
-        .sink(receiveValue: { [weak self] _, _ in
-            self?.requestChartDisplay()
+        .sink(receiveValue: { [weak self] in
+            guard let self else { return }
+            if !self.transformerProvider.hasValidDataRanges,
+               let ranges = self.dataProvider.getInitDataRanges() {
+                self.transformerProvider.prepareMatrixValuePx(dataRanges: ranges)
+                self.updateViewport(using: self.transformerProvider.transformer)
+            }
+            self.requestChartDisplay()
         }).store(in: &disposeBag)
     }
     
@@ -138,9 +142,8 @@ public class InfiniteChartBase: ChartPlatformView {
 
         if plotWidth > 0, plotHeight > 0,
            !hasLaidOutChart || plotWidth != transformerProvider.chartWidth || plotHeight != transformerProvider.chartHeight {
-            transformerProvider.setChartDimens(width: plotWidth, height: plotHeight)
             hasLaidOutChart = true
-            transformerProvider.prepareMatrixValuePx(dataRanges: transformerProvider.initDataRanges)
+            transformerProvider.setChartDimens(width: plotWidth, height: plotHeight)
         }
         // Layout can make the viewport available without changing the transform.
         updateViewport(using: transformerProvider.transformer)
@@ -174,7 +177,7 @@ public class InfiniteChartBase: ChartPlatformView {
         // AppKit can request only a dirty subregion; chart geometry uses the full bounds.
         let height = bounds.height - xAxisConfig.requiredSpace
         let width = bounds.width - yAxisConfig.requiredSpace
-        guard width > 0, height > 0 else { return }
+        guard width > 0, height > 0, transformerProvider.hasValidDataRanges else { return }
         
         let mainChartRect = CGRect(x: 0, y: 0, width: width, height: height * 2/3)
         let volumeChartRect = CGRect(x: 0, y: mainChartRect.maxY, width: width, height: height * 1/3)
