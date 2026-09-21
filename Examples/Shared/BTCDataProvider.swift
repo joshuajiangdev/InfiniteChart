@@ -18,7 +18,6 @@ public final class BTCDataProvider: ObservableObject, CandleStickDataProvider, V
     @Published public private(set) var revision = UUID()
     @Published public private(set) var isSnapshot = true
 
-    public weak var tranformerUpdatedDelegate: (any ChartDataProviderDelegate)?
     public var redrawStream: AnyPublisher<Void, Never> { redraw.eraseToAnyPublisher() }
 
     private let redraw = CurrentValueSubject<Void, Never>(())

@@ -150,7 +150,6 @@ private final class LifecycleDataProvider: ChartDataProviderBase {
     var ranges: DataRanges?
     let redraw = PassthroughSubject<Void, Never>()
     var redrawStream: AnyPublisher<Void, Never> { redraw.eraseToAnyPublisher() }
-    var tranformerUpdatedDelegate: (any ChartDataProviderDelegate)? { nil }
     var technicalIndicators: [TechnicalIndicator] { [] }
 
     init(ranges: DataRanges?) { self.ranges = ranges }

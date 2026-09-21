@@ -369,7 +369,6 @@ private final class TestPinchGestureRecognizer: ChartPinchGestureRecognizer {
 
 private struct PlatformTestDataProvider: CandleStickDataProvider, VolumeDataProvider {
     let redrawStream = Just(()).eraseToAnyPublisher()
-    let tranformerUpdatedDelegate: ChartDataProviderDelegate? = nil
     let technicalIndicators = [TechnicalIndicator(
         name: "Test indicator",
         color: .magenta,

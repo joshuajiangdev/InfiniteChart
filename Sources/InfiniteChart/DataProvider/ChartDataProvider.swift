@@ -22,15 +22,9 @@ public struct DataRanges {
     }
 }
 
-public protocol ChartDataProviderDelegate: AnyObject {
-    func transformerDidUpdate(transformer: any Transformer)
-}
-
 public protocol ChartDataProviderBase {
     
     var redrawStream: AnyPublisher<Void, Never> { get }
-    
-    var tranformerUpdatedDelegate: ChartDataProviderDelegate? { get }
     
     /**
      Get initial data range
@@ -54,6 +48,10 @@ public protocol ChartDataProviderBase {
     func getClosestXValue(to xValue: Double, seekBelow: Bool, offset: Int) -> Double?
     
     var technicalIndicators: [TechnicalIndicator] { get }
+}
+
+public extension ChartDataProviderBase {
+    var technicalIndicators: [TechnicalIndicator] { [] }
 }
 
 public struct TechnicalIndicator {
