@@ -1,12 +1,4 @@
-//
-//  Transformer.swift
-//  
-//
-//  Created by Joshua Jiang on 8/21/24.
-//
-
 import CoreGraphics
-import Accelerate
 
 public struct DoublePrecisionPoint: Equatable {
     public let x: Double
@@ -23,26 +15,35 @@ public protocol Transformer: Equatable {
     func pixelForValue(_ point: DoublePrecisionPoint) -> CGPoint
 }
 
-public struct AccelerateTransformer: Transformer {
-    
-    let valueToPixelMatrix: [Double]
-    let pixelToValueMatrix: [Double]
-    
-    public func valueForTouchPoint(_ point: CGPoint) -> DoublePrecisionPoint {
-        var result = [Double](repeating: 0, count: 3)
-        let input = [Double(point.x), Double(point.y), 1]
+/// An immutable pair of forward and inverse chart coordinate transforms.
+public struct AffineTransformer: Transformer {
+    let valueToPixelTransform: CGAffineTransform
+    let pixelToValueTransform: CGAffineTransform
 
-        vDSP_mmulD(input, 1, pixelToValueMatrix, 1, &result, 1, 1, 3, 3)
-        
-        return DoublePrecisionPoint(x: result[0], y: result[1])
+    init?(valueToPixel transform: CGAffineTransform) {
+        let determinant = transform.a * transform.d - transform.b * transform.c
+        guard transform.isFinite, determinant.isFinite, determinant != 0 else { return nil }
+        let inverse = transform.inverted()
+        guard inverse.isFinite else { return nil }
+        valueToPixelTransform = transform
+        pixelToValueTransform = inverse
     }
-    
+
+    public func valueForTouchPoint(_ point: CGPoint) -> DoublePrecisionPoint {
+        let value = point.applying(pixelToValueTransform)
+        return DoublePrecisionPoint(x: Double(value.x), y: Double(value.y))
+    }
+
     public func pixelForValue(_ point: DoublePrecisionPoint) -> CGPoint {
-        var result = [Double](repeating: 0, count: 3)
-        let input = [Double(point.x), Double(point.y), 1]
-        
-        vDSP_mmulD(input, 1, valueToPixelMatrix, 1, &result, 1, 1, 3, 3)
-        
-        return CGPoint(x: result[0], y: result[1])
+        CGPoint(x: point.x, y: point.y).applying(valueToPixelTransform)
     }
 }
+
+extension CGAffineTransform {
+    var isFinite: Bool {
+        a.isFinite && b.isFinite && c.isFinite && d.isFinite && tx.isFinite && ty.isFinite
+    }
+}
+
+@available(*, deprecated, renamed: "AffineTransformer")
+public typealias AccelerateTransformer = AffineTransformer

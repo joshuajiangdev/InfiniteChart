@@ -11,10 +11,10 @@ import Combine
 class XAxisView: ChartPlatformView, Transformable, Pannable, Pinchable {
     // MARK: - Transformable
     
-    typealias TransformerType = AccelerateTransformer
+    typealias TransformerType = AffineTransformer
     var transformerProvider: (any TransformerProviding)?
     var transformableAxes: [TransformableAxis] = [.horizontal]
-    var transformerStream: AnyPublisher<AccelerateTransformer, Never>?
+    var transformerStream: AnyPublisher<AffineTransformer, Never>?
     
     var config: AxisConfig!
     

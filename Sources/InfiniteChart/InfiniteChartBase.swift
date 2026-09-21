@@ -21,12 +21,12 @@ public class InfiniteChartBase: ChartPlatformView {
     let yAxisConfig: AxisConfig
 
     // TODO: Clear config/setup flow
-    lazy var transformerProvider: AccelerateTransformerProvider = {
+    lazy var transformerProvider: AffineTransformerProvider = {
         guard let dataRanges = dataProvider.getInitDataRanges() else {
             fatalError("Failed to get data ranges from BTCDataFetcher")
         }
         
-        return AccelerateTransformerProvider(
+        return AffineTransformerProvider(
             // Constraint-based layouts commonly create the view at zero size.
             // Keep the initial transform invertible until the first real layout.
             size: CGSize(width: max(bounds.width, 1), height: max(bounds.height, 1)),
@@ -34,7 +34,7 @@ public class InfiniteChartBase: ChartPlatformView {
         )
     }()
     
-    private func updateViewport(using transformer: AccelerateTransformer) {
+    private func updateViewport(using transformer: AffineTransformer) {
         let viewport = hasLaidOutChart && !chartBaseView.bounds.isEmpty
             ? transformerProvider.viewport(for: transformer)
             : nil
@@ -200,7 +200,7 @@ final class TechnicalIndicatorRender {
         self.dataProvider = dataProvider
     }
     
-    func drawTechnicalIndicators(context: CGContext, transformerProvider: AccelerateTransformerProvider) {
+    func drawTechnicalIndicators(context: CGContext, transformerProvider: AffineTransformerProvider) {
         let transformer = transformerProvider.transformer
         
         for indicator in dataProvider.technicalIndicators {

@@ -14,7 +14,7 @@ class VolumeRender {
         self.dataProvider = dataProvider
     }
     
-    func drawVolumeChart(context: CGContext, transformerProvider: AccelerateTransformerProvider, rect: CGRect) {
+    func drawVolumeChart(context: CGContext, transformerProvider: AffineTransformerProvider, rect: CGRect) {
         let transformer = transformerProvider.transformer
         
         var startX = transformerProvider.transformer.valueForTouchPoint(CGPoint(x: 0, y: 0)).x.rounded(.up)

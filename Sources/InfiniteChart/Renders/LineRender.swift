@@ -14,7 +14,7 @@ final class LineRender {
         self.dataProvider = dataProvider
     }
     
-    func drawSimpleLineChart(context: CGContext, transformerProvider: AccelerateTransformerProvider) {
+    func drawSimpleLineChart(context: CGContext, transformerProvider: AffineTransformerProvider) {
         let phaseY: CGFloat = 1.0 // Assuming full phase, adjust if needed
         
         let linePath = CGMutablePath()

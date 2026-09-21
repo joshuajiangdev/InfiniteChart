@@ -10,7 +10,7 @@ required.
 - macOS 10.15 or later, or iOS 13 or later.
 
 The library uses AppKit on macOS and UIKit on iOS, with shared
-Core Graphics rendering, Combine publishers, and Accelerate transforms. watchOS
+Core Graphics rendering and affine transforms, with Combine publishers. watchOS
 and tvOS are not supported.
 
 ## Add the library to a package
