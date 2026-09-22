@@ -5,6 +5,7 @@
 //  Created by Joshua Jiang on 8/17/24.
 //
 
+import Combine
 import XCTest
 @testable import InfiniteChart
 
@@ -186,14 +187,14 @@ extension AffineTransformerTests {
             dataRanges: DataRanges(chartXMin: 1_720_000_000_000, deltaX: 86_400_000,
                                    chartYMin: 0, deltaY: 100)
         )
-        let initial = try XCTUnwrap(provider.viewport(for: provider.transformer))
+        let initial = try XCTUnwrap(provider.viewport)
         provider.zoom(scaleX: 1, scaleY: 2, x: 333, y: 200)
-        let vertical = try XCTUnwrap(provider.viewport(for: provider.transformer))
+        let vertical = try XCTUnwrap(provider.viewport)
         XCTAssertEqual(vertical.visibleXRange, initial.visibleXRange)
         XCTAssertEqual(vertical.visibleYRange.lowerBound, 25, accuracy: 0.000001)
         XCTAssertEqual(vertical.visibleYRange.upperBound, 75, accuracy: 0.000001)
         provider.zoom(scaleX: 0.5, scaleY: 1, x: 400, y: 200)
-        let zoomedOut = try XCTUnwrap(provider.viewport(for: provider.transformer))
+        let zoomedOut = try XCTUnwrap(provider.viewport)
         XCTAssertEqual(zoomedOut.visibleXRange.upperBound - zoomedOut.visibleXRange.lowerBound,
                        172_800_000, accuracy: 0.001)
     }
@@ -201,16 +202,27 @@ extension AffineTransformerTests {
     func testInvalidGesturesCannotCorruptTransform() {
         let provider = affineTransformerProvider!
         let original = provider.transformer
+        let originalViewport = provider.viewport
+        var received = 0
+        let subscription = provider.transformerStream.sink { _ in received += 1 }
+        defer { withExtendedLifetime(subscription) {} }
         for scale: CGFloat in [0, -1, .nan, .infinity, .leastNonzeroMagnitude, .greatestFiniteMagnitude] {
             provider.zoom(scaleX: scale, scaleY: scale, x: 50, y: 50)
             XCTAssertEqual(provider.transformer, original)
         }
+        // These matrices remain invertible, but their viewport endpoints collapse
+        // to the same representable value and must be rejected before publication.
+        provider.zoom(scaleX: 1e20, scaleY: 1, x: 50, y: 50)
+        provider.translate(delta: CGPoint(x: 1e100, y: 0))
         provider.zoom(scaleX: 2, scaleY: 2, x: .nan, y: 50)
         provider.translate(delta: CGPoint(x: CGFloat.infinity, y: 0))
         provider.translate(delta: CGPoint(x: 0, y: CGFloat.nan))
         XCTAssertEqual(provider.transformer, original)
+        XCTAssertEqual(provider.viewport, originalViewport)
+        XCTAssertEqual(received, 1, "Rejected gestures must not publish a transform.")
         provider.zoom(scaleX: 2, scaleY: 2, x: 50, y: 50)
         XCTAssertNotEqual(provider.transformer, original)
+        XCTAssertEqual(received, 2)
     }
 
     func testInvalidRangesWaitForAValidRangeAndLaterInvalidUpdatesAreIgnored() {
@@ -218,11 +230,11 @@ extension AffineTransformerTests {
             size: .zero,
             dataRanges: DataRanges(chartXMin: 0, deltaX: 0, chartYMin: 0, deltaY: .nan)
         )
-        XCTAssertNil(provider.viewport(for: provider.transformer))
+        XCTAssertNil(provider.viewport)
         provider.setChartDimens(width: 400, height: 300)
         provider.prepareMatrixValuePx(dataRanges: DataRanges(chartXMin: 0, deltaX: 100,
                                                             chartYMin: -10, deltaY: 20))
-        XCTAssertNotNil(provider.viewport(for: provider.transformer))
+        XCTAssertNotNil(provider.viewport)
         let original = provider.transformer
         for invalid in [
             DataRanges(chartXMin: .infinity, deltaX: 100, chartYMin: 0, deltaY: 100),
@@ -233,5 +245,153 @@ extension AffineTransformerTests {
             provider.prepareMatrixValuePx(dataRanges: invalid)
             XCTAssertEqual(provider.transformer, original)
         }
+    }
+
+    func testOverflowingViewportCannotInitializeOrReplaceValidRanges() throws {
+        let size = CGSize(width: 2, height: 1)
+        let overflowingRanges = DataRanges(chartXMin: 0, deltaX: Double.greatestFiniteMagnitude,
+                                          chartYMin: 0, deltaY: 1)
+        // A finite, invertible matrix can still overflow across the plot width.
+        let candidate = try XCTUnwrap(AffineTransformer(valueToPixel: CGAffineTransform(
+            a: size.width / overflowingRanges.deltaX, b: 0, c: 0, d: -1, tx: 0, ty: 1
+        )))
+        XCTAssertFalse(candidate.valueForTouchPoint(CGPoint(x: 2, y: 1)).x.isFinite)
+
+        let provider = AffineTransformerProvider(size: size, dataRanges: overflowingRanges)
+        var received: [AffineTransformer] = []
+        let subscription = provider.transformerStream.sink { received.append($0) }
+        defer { withExtendedLifetime(subscription) {} }
+
+        provider.prepareMatrixValuePx(dataRanges: overflowingRanges)
+        XCTAssertFalse(provider.hasValidDataRanges)
+        XCTAssertNil(provider.viewport)
+        XCTAssertTrue(received.isEmpty)
+        XCTAssertEqual(CGSize(width: provider.chartWidth, height: provider.chartHeight), size)
+
+        provider.prepareMatrixValuePx(dataRanges: DataRanges(chartXMin: 0, deltaX: 2,
+                                                            chartYMin: 0, deltaY: 1))
+        let original = provider.transformer
+        let originalViewport = try XCTUnwrap(provider.viewport)
+        XCTAssertEqual(received, [original])
+
+        provider.prepareMatrixValuePx(dataRanges: overflowingRanges)
+        XCTAssertTrue(provider.hasValidDataRanges)
+        XCTAssertEqual(provider.transformer, original)
+        XCTAssertEqual(provider.viewport, originalViewport)
+        XCTAssertEqual(CGSize(width: provider.chartWidth, height: provider.chartHeight), size)
+        XCTAssertEqual(received, [original], "An overflowing viewport must not publish or replace valid state.")
+    }
+
+    func testSubscribersReadCommittedTransformViewportAndDimensionsDuringEveryUpdate() throws {
+        let provider = affineTransformerProvider!
+        var expectedSize = CGSize(width: 100, height: 100)
+        var viewports: [ChartViewport] = []
+        let subscription = provider.transformerStream.sink { transformer in
+            XCTAssertEqual(provider.transformer, transformer)
+            XCTAssertEqual(CGSize(width: provider.chartWidth, height: provider.chartHeight), expectedSize)
+            guard let viewport = provider.viewport else {
+                XCTFail("A published transform must have a current viewport.")
+                return
+            }
+            let topLeft = transformer.valueForTouchPoint(.zero)
+            let bottomRight = transformer.valueForTouchPoint(CGPoint(x: expectedSize.width, y: expectedSize.height))
+            XCTAssertEqual(viewport.visibleXRange, topLeft.x...bottomRight.x)
+            XCTAssertEqual(viewport.visibleYRange, bottomRight.y...topLeft.y)
+            XCTAssertEqual(viewport.plotSize, expectedSize)
+            viewports.append(viewport)
+        }
+        defer { withExtendedLifetime(subscription) {} }
+
+        XCTAssertEqual(viewports.count, 1)
+        provider.zoom(scaleX: 2, scaleY: 2, x: 50, y: 50)
+        XCTAssertEqual(viewports.count, 2)
+        XCTAssertEqual(try XCTUnwrap(viewports.last).visibleXRange, 250...750)
+        provider.translate(delta: CGPoint(x: 10, y: 20))
+        XCTAssertEqual(viewports.count, 3)
+        XCTAssertEqual(try XCTUnwrap(viewports.last).visibleXRange, 200...700)
+        provider.prepareMatrixValuePx(dataRanges: DataRanges(chartXMin: 500, deltaX: 200,
+                                                            chartYMin: -20, deltaY: 40))
+        XCTAssertEqual(viewports.count, 4)
+        XCTAssertEqual(try XCTUnwrap(viewports.last).visibleXRange, 500...700)
+
+        expectedSize = CGSize(width: 200, height: 300)
+        provider.setChartDimens(width: expectedSize.width, height: expectedSize.height)
+        XCTAssertEqual(viewports.count, 5)
+        XCTAssertEqual(try XCTUnwrap(viewports.last).visibleXRange, 500...700)
+        XCTAssertEqual(try XCTUnwrap(viewports.last).visibleYRange, -20...20)
+
+        var lateTransforms: [AffineTransformer] = []
+        let lateSubscription = provider.transformerStream.sink { lateTransforms.append($0) }
+        defer { withExtendedLifetime(lateSubscription) {} }
+        XCTAssertEqual(lateTransforms, [provider.transformer])
+        XCTAssertEqual(viewports.count, 5, "Subscribing must not notify existing subscribers.")
+    }
+
+    func testFirstValidRangePublishesEvenWhenTransformMatchesPlaceholder() {
+        let provider = AffineTransformerProvider(
+            size: CGSize(width: 1, height: 1),
+            dataRanges: DataRanges(chartXMin: 0, deltaX: 0, chartYMin: 0, deltaY: 0)
+        )
+        let placeholder = provider.transformer
+        var received: [AffineTransformer] = []
+        let subscription = provider.transformerStream.sink { transformer in
+            XCTAssertTrue(provider.hasValidDataRanges)
+            XCTAssertEqual(provider.transformer, transformer)
+            XCTAssertNotNil(provider.viewport)
+            received.append(transformer)
+        }
+        defer { withExtendedLifetime(subscription) {} }
+
+        provider.zoom(scaleX: 2, scaleY: 2)
+        provider.translate(delta: CGPoint(x: 10, y: 10))
+        provider.setChartDimens(width: 1, height: 1)
+        provider.prepareMatrixValuePx(dataRanges: DataRanges(chartXMin: 0, deltaX: 1,
+                                                            chartYMin: 0, deltaY: 0))
+        XCTAssertTrue(received.isEmpty)
+        XCTAssertFalse(provider.hasValidDataRanges)
+        XCTAssertNil(provider.viewport)
+
+        let validRanges = DataRanges(chartXMin: 0, deltaX: 1, chartYMin: -1, deltaY: 1)
+        provider.prepareMatrixValuePx(dataRanges: validRanges)
+        XCTAssertEqual(provider.transformer, placeholder)
+        XCTAssertEqual(received, [placeholder])
+        XCTAssertEqual(provider.viewport, ChartViewport(visibleXRange: 0...1, visibleYRange: -1...0,
+                                                       plotSize: CGSize(width: 1, height: 1)))
+
+        provider.prepareMatrixValuePx(dataRanges: validRanges)
+        XCTAssertEqual(received, [placeholder], "Repeating a valid range must remain silent.")
+    }
+
+    func testInvalidSizesAndUnchangedUpdatesPreserveStateWithoutPublishing() {
+        let provider = affineTransformerProvider!
+        let original = provider.transformer
+        let originalViewport = provider.viewport
+        var received = 0
+        let subscription = provider.transformerStream.sink { _ in received += 1 }
+        defer { withExtendedLifetime(subscription) {} }
+
+        for size in [
+            CGSize(width: 0, height: 100),
+            CGSize(width: 100, height: -1),
+            CGSize(width: CGFloat.nan, height: 100),
+            CGSize(width: 100, height: CGFloat.infinity),
+            CGSize(width: CGFloat.leastNonzeroMagnitude, height: 100),
+            CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        ] {
+            provider.setChartDimens(width: size.width, height: size.height)
+            XCTAssertEqual(provider.chartWidth, 100)
+            XCTAssertEqual(provider.chartHeight, 100)
+            XCTAssertEqual(provider.transformer, original)
+            XCTAssertEqual(provider.viewport, originalViewport)
+        }
+        provider.setChartDimens(width: 100, height: 100)
+        provider.zoom(scaleX: 1, scaleY: 1, x: 17, y: 31)
+        provider.translate(delta: .zero)
+        provider.prepareMatrixValuePx(dataRanges: DataRanges(chartXMin: 0, deltaX: 1000,
+                                                            chartYMin: 0, deltaY: 1000))
+        XCTAssertTrue(provider.hasValidDataRanges)
+        XCTAssertEqual(provider.transformer, original)
+        XCTAssertEqual(provider.viewport, originalViewport)
+        XCTAssertEqual(received, 1)
     }
 }

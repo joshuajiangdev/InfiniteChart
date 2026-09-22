@@ -154,8 +154,8 @@ final class ChartViewportTests: XCTestCase {
         let observer = ViewportRecorder(chart: chart)
         observer.viewports.removeAll()
 
-        // @Published sends the new transform before updating its stored value.
-        // Each emitted viewport must describe that new transform immediately.
+        // Each emitted viewport must describe the provider's committed transform
+        // synchronously, before the navigation call returns.
         chart.transformerProvider.zoom(scaleX: 2, scaleY: 2, x: 200, y: 150)
         XCTAssertEqual(observer.viewports.count, 1)
         try assertViewport(observer.viewports.last, x: 250...750, y: 25...75)
@@ -343,6 +343,7 @@ private final class ViewportRecorder {
         subscription = chart.viewportStream.compactMap { $0 }.sink { [weak self, weak chart] viewport in
             guard let self, let chart else { return }
             XCTAssertEqual(chart.viewportStream.value, viewport)
+            XCTAssertEqual(chart.transformerProvider.viewport, viewport)
             self.viewports.append(viewport)
             self.onReceive?(viewport)
         }

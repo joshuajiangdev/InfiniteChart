@@ -8,29 +8,29 @@ public final class AffineTransformerProvider: TransformerProviding {
     private(set) var chartHeight: CGFloat
     private(set) var hasValidDataRanges = false
 
-    @Published private(set) var transformer: AffineTransformer
-    lazy var transformerStream: AnyPublisher<AffineTransformer, Never> = $transformer
+    // CurrentValueSubject stores each transform before notifying subscribers.
+    private let transformerSubject: CurrentValueSubject<AffineTransformer, Never>
+    var transformer: AffineTransformer { transformerSubject.value }
+    lazy var transformerStream: AnyPublisher<AffineTransformer, Never> = transformerSubject
         .filter { [weak self] _ in self?.hasValidDataRanges == true }
         .eraseToAnyPublisher()
+
+    private var plotSize: CGSize { CGSize(width: chartWidth, height: chartHeight) }
+
+    /// A snapshot of the provider's current transform and plot dimensions.
+    var viewport: ChartViewport? {
+        guard hasValidDataRanges else { return nil }
+        return transformer.viewport(in: plotSize)
+    }
 
     public init(size: CGSize, dataRanges: DataRanges) {
         chartWidth = size.width.isFinite && size.width > 0 ? size.width : 1
         chartHeight = size.height.isFinite && size.height > 0 ? size.height : 1
         // Keep an invertible placeholder until a provider supplies valid ranges.
-        transformer = AffineTransformer(valueToPixel: CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: 0))!
+        transformerSubject = CurrentValueSubject(
+            AffineTransformer(valueToPixel: CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: 0))!
+        )
         prepareMatrixValuePx(dataRanges: dataRanges)
-    }
-
-    /// A snapshot derived from the supplied transform and current plot dimensions.
-    func viewport(for transformer: AffineTransformer) -> ChartViewport? {
-        guard hasValidDataRanges, chartWidth > 0, chartHeight > 0 else { return nil }
-        let topLeft = transformer.valueForTouchPoint(.zero)
-        let bottomRight = transformer.valueForTouchPoint(CGPoint(x: chartWidth, y: chartHeight))
-        guard topLeft.x.isFinite, topLeft.y.isFinite, bottomRight.x.isFinite, bottomRight.y.isFinite,
-              topLeft.x < bottomRight.x, bottomRight.y < topLeft.y else { return nil }
-        return ChartViewport(visibleXRange: topLeft.x...bottomRight.x,
-                             visibleYRange: bottomRight.y...topLeft.y,
-                             plotSize: CGSize(width: chartWidth, height: chartHeight))
     }
 
     /// Resize the plot without resetting its visible data ranges.
@@ -39,7 +39,8 @@ public final class AffineTransformerProvider: TransformerProviding {
         let resized = transformer.valueToPixelTransform.concatenating(
             CGAffineTransform(scaleX: width / chartWidth, y: height / chartHeight)
         )
-        guard let next = AffineTransformer(valueToPixel: resized) else { return }
+        guard let next = AffineTransformer(valueToPixel: resized),
+              next.viewport(in: CGSize(width: width, height: height)) != nil else { return }
         chartWidth = width
         chartHeight = height
         publish(next)
@@ -58,11 +59,12 @@ public final class AffineTransformerProvider: TransformerProviding {
         let transform = CGAffineTransform(a: scaleX, b: 0, c: 0, d: -scaleY,
                                           tx: -dataRanges.chartXMin * scaleX,
                                           ty: chartHeight + dataRanges.chartYMin * scaleY)
-        guard let next = AffineTransformer(valueToPixel: transform) else { return }
+        guard let next = AffineTransformer(valueToPixel: transform),
+              next.viewport(in: plotSize) != nil else { return }
         let wasValid = hasValidDataRanges
         hasValidDataRanges = true
         if !wasValid || next != transformer {
-            transformer = next
+            transformerSubject.send(next)
         }
     }
 
@@ -83,13 +85,14 @@ public final class AffineTransformerProvider: TransformerProviding {
     }
 
     private func update(_ transform: CGAffineTransform) {
-        guard let next = AffineTransformer(valueToPixel: transform), viewport(for: next) != nil else { return }
+        guard let next = AffineTransformer(valueToPixel: transform),
+              next.viewport(in: plotSize) != nil else { return }
         publish(next)
     }
 
     private func publish(_ next: AffineTransformer) {
         guard next != transformer else { return }
-        transformer = next
+        transformerSubject.send(next)
     }
 }
 

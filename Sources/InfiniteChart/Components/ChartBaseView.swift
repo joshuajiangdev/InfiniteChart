@@ -6,15 +6,10 @@
 //
 
 import Foundation
-import Combine
 
 class ChartBaseView: ChartPlatformView, Transformable, Pannable, Pinchable {
     
     // MARK: - Transformable
-    var transformerStream: AnyPublisher<AffineTransformer, Never>?
-    
-    typealias TransformerType = AffineTransformer
-    
     var transformerProvider: (any TransformerProviding)?
     
     var transformableAxes: [TransformableAxis] = [.horizontal, .vertical]
