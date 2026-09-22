@@ -32,9 +32,9 @@ public class InfiniteChartBase: ChartPlatformView {
         )
     }()
     
-    private func updateViewport(using transformer: AffineTransformer) {
+    private func updateViewport() {
         let viewport = hasLaidOutChart && !chartBaseView.bounds.isEmpty
-            ? transformerProvider.viewport(for: transformer)
+            ? transformerProvider.viewport
             : nil
         guard viewport != viewportStream.value else { return }
         viewportStream.send(viewport)
@@ -42,8 +42,8 @@ public class InfiniteChartBase: ChartPlatformView {
 
     private func setupObservable() {
         transformerProvider.transformerStream
-            .sink { [weak self] transformer in
-                self?.updateViewport(using: transformer)
+            .sink { [weak self] _ in
+                self?.updateViewport()
             }
             .store(in: &disposeBag)
         Publishers.Merge(
@@ -56,7 +56,6 @@ public class InfiniteChartBase: ChartPlatformView {
             if !self.transformerProvider.hasValidDataRanges,
                let ranges = self.dataProvider.getInitDataRanges() {
                 self.transformerProvider.prepareMatrixValuePx(dataRanges: ranges)
-                self.updateViewport(using: self.transformerProvider.transformer)
             }
             self.requestChartDisplay()
         }).store(in: &disposeBag)
@@ -146,7 +145,7 @@ public class InfiniteChartBase: ChartPlatformView {
             transformerProvider.setChartDimens(width: plotWidth, height: plotHeight)
         }
         // Layout can make the viewport available without changing the transform.
-        updateViewport(using: transformerProvider.transformer)
+        updateViewport()
         requestChartDisplay()
     }
     
@@ -165,7 +164,6 @@ public class InfiniteChartBase: ChartPlatformView {
         yAxisView.config = yAxisConfig
         yAxisView.setup()
         
-        chartBaseView.transformerStream = transformerProvider.transformerStream
         chartBaseView.transformerProvider = transformerProvider
     }
     

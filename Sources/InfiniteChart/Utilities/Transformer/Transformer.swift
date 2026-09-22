@@ -37,6 +37,19 @@ public struct AffineTransformer: Transformer {
     public func pixelForValue(_ point: DoublePrecisionPoint) -> CGPoint {
         CGPoint(x: point.x, y: point.y).applying(valueToPixelTransform)
     }
+
+    /// Derives geometry without changing provider state, including for candidate transforms.
+    func viewport(in plotSize: CGSize) -> ChartViewport? {
+        guard plotSize.width.isFinite, plotSize.height.isFinite,
+              plotSize.width > 0, plotSize.height > 0 else { return nil }
+        let topLeft = valueForTouchPoint(.zero)
+        let bottomRight = valueForTouchPoint(CGPoint(x: plotSize.width, y: plotSize.height))
+        guard topLeft.x.isFinite, topLeft.y.isFinite, bottomRight.x.isFinite, bottomRight.y.isFinite,
+              topLeft.x < bottomRight.x, bottomRight.y < topLeft.y else { return nil }
+        return ChartViewport(visibleXRange: topLeft.x...bottomRight.x,
+                             visibleYRange: bottomRight.y...topLeft.y,
+                             plotSize: plotSize)
+    }
 }
 
 extension CGAffineTransform {

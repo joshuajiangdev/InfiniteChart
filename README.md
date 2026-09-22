@@ -59,6 +59,8 @@ let viewportObservation = chart.viewportStream
 The chart maintains a `CurrentValueSubject<ChartViewport?, Never>`. Its value is
 nil before layout or while the plot is empty; use `compactMap` to observe only
 valid viewports. The value stays current even when no application is subscribed.
+The transform provider stores updates before notifying subscribers, so coordinate
+conversion and viewport reads reflect the same committed transform.
 Keep the returned `AnyCancellable` alive while observing the chart.
 
 Read and subscribe on the main actor. Subscriptions receive the current value
