@@ -40,6 +40,8 @@ public class InfiniteChartBase: ChartPlatformView {
         viewportStream.send(viewport)
     }
 
+    /// Publishes viewport changes synchronously and schedules transform/data redraws on the main queue.
+    /// Initial provider ranges are adopted on redraw only while no valid ranges have been installed.
     private func setupObservable() {
         transformerProvider.transformerStream
             .sink { [weak self] _ in
@@ -90,6 +92,14 @@ public class InfiniteChartBase: ChartPlatformView {
         return TechnicalIndicatorRender(dataProvider: dataProvider)
     }()
 
+    /// Creates a chart and axes backed by the provider's supported drawing protocols.
+    /// A provider without valid initial ranges can supply them later through its redraw stream.
+    ///
+    /// - Parameters:
+    ///   - frame: Initial view frame in points; zero-sized views can be laid out later.
+    ///   - dataProvider: The retained source of samples, initial ranges, and redraw events.
+    ///   - xAxisConfig: Styling, label formatting, and space reserved for the horizontal axis.
+    ///   - yAxisConfig: Styling, label formatting, and space reserved for the vertical axis.
     public init(
         frame: CGRect, 
         dataProvider: any ChartDataProviderBase, 
@@ -112,6 +122,8 @@ public class InfiniteChartBase: ChartPlatformView {
         setupSubViews()
     }
 
+    /// Lays out the axes and plot, preserving visible data ranges when the plot resizes.
+    /// Updates the viewport after layout, including transitions to or from an empty plot.
     public override func layoutChartSubviews() {
         super.layoutChartSubviews()
 
@@ -149,10 +161,12 @@ public class InfiniteChartBase: ChartPlatformView {
         requestChartDisplay()
     }
     
+    /// Unsupported: construct charts with a data provider instead of decoding them from an archive.
     public required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
+    /// Connects axis configuration and transform observation, and assigns the plot's gesture provider.
     public func setupSubViews() {
         xAxisView.transformerStream = transformerProvider.transformerStream
         xAxisView.transformerProvider = transformerProvider
@@ -167,6 +181,8 @@ public class InfiniteChartBase: ChartPlatformView {
         chartBaseView.transformerProvider = transformerProvider
     }
     
+    /// Draws candles, volume, and indicators using full plot geometry, even for a partial redraw.
+    /// Skips drawing until the plot has positive dimensions and valid initial data ranges.
     public override func draw(_ rect: CGRect) {
         guard let context = currentChartGraphicsContext() else {
             return
@@ -191,41 +207,5 @@ public class InfiniteChartBase: ChartPlatformView {
         
         // Draw technical indicators
         technicalIndicatorRender.drawTechnicalIndicators(context: context, transformerProvider: transformerProvider)
-    }
-}
-
-final class TechnicalIndicatorRender {
-    let dataProvider: any ChartDataProviderBase
-    
-    init(dataProvider: any ChartDataProviderBase) {
-        self.dataProvider = dataProvider
-    }
-    
-    func drawTechnicalIndicators(context: CGContext, transformerProvider: AffineTransformerProvider) {
-        let transformer = transformerProvider.transformer
-        
-        for indicator in dataProvider.technicalIndicators {
-            let linePath = CGMutablePath()
-            var isFirstPoint = true
-            
-            for point in indicator.dataPoints {
-                let pixelPoint = transformer.pixelForValue(DoublePrecisionPoint(x: point.x, y: point.y))
-                
-                if isFirstPoint {
-                    linePath.move(to: CGPoint(x: pixelPoint.x, y: pixelPoint.y))
-                    isFirstPoint = false
-                } else {
-                    linePath.addLine(to: CGPoint(x: pixelPoint.x, y: pixelPoint.y))
-                }
-            }
-            
-            context.saveGState()
-            defer { context.restoreGState() }
-            
-            context.addPath(linePath)
-            context.setStrokeColor(indicator.color.cgColor)
-            context.setLineWidth(2.0)
-            context.strokePath()
-        }
     }
 }

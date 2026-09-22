@@ -14,6 +14,8 @@ public struct DataRanges {
     public let chartYMin: Double
     public let deltaY: Double
     
+    /// Stores initial axis bounds in the provider's data units without validating them.
+    /// The chart requires finite minima and finite, positive spans with representable upper bounds.
     public init(chartXMin: Double, deltaX: Double, chartYMin: Double, deltaY: Double) {
         self.chartXMin = chartXMin
         self.deltaX = deltaX
@@ -24,27 +26,21 @@ public struct DataRanges {
 
 public protocol ChartDataProviderBase {
     
+    /// Emit after data changes. An initial event is not required.
     var redrawStream: AnyPublisher<Void, Never> { get }
-    
-    /**
-     Get initial data range
-     
-     - Parameter for: The target value we want to get y value of
-     
-     - Returns: DataRanges
-     */
+
+    /// Finite initial bounds with positive spans, or nil while data is unavailable.
     func getInitDataRanges() -> DataRanges?
     
-    /**
-     Get nearest x value
-     
-     - Parameter
-        to: The target value we want to find the nearest x value to
-        seekBelow: boolean to indicate search to bottom or above
-        offset: how many extra data point to skip
-
-     - Returns: The nearest x value to what we passed in
-     */
+    /// Finds an available X coordinate in the requested direction, then advances by sample count.
+    ///
+    /// - Parameters:
+    ///   - xValue: The target coordinate in the provider's X units.
+    ///   - seekBelow: Whether to search at or below the target instead of at or above it.
+    ///   - offset: Additional available samples to move in the search direction.
+    ///     At an exact match, zero returns that sample and one advances to its neighbor.
+    /// - Returns: A finite coordinate, or nil when no sample is available. At a data boundary,
+    ///   implementations may return nil or clamp to the first or last sample.
     func getClosestXValue(to xValue: Double, seekBelow: Bool, offset: Int) -> Double?
     
     var technicalIndicators: [TechnicalIndicator] { get }
@@ -59,6 +55,7 @@ public struct TechnicalIndicator {
     public let color: ChartColor
     public let dataPoints: [(x: Double, y: Double)]
 
+    /// Stores a precomputed indicator series in drawing order using the provider's data coordinates.
     public init(name: String, color: ChartColor, dataPoints: [(x: Double, y: Double)]) {
         self.name = name
         self.color = color
@@ -68,13 +65,7 @@ public struct TechnicalIndicator {
 
 public protocol LineChartDataProvider: ChartDataProviderBase {
     
-    /**
-     Get the y value for the target x value
-     
-     - Parameter for: The target value we want to get y value of
-     
-     - Returns: The corresponding y value or nil if no value
-     */
+    /// Returns the Y value at an available X coordinate; nil or a nonfinite value leaves a line gap.
     func getYValue(for xValue: Double) -> Double?
 }
 
@@ -85,6 +76,8 @@ public struct CandleStickDataPoint {
     public let close: Double
     public let color: ChartColor
     
+    /// Stores a candle's OHLC values in the provider's Y units and its drawing color.
+    /// The renderer skips candles containing nonfinite values.
     public init(high: Double, low: Double, open: Double, close: Double, color: ChartColor) {
         self.high = high
         self.low = low
@@ -96,16 +89,12 @@ public struct CandleStickDataPoint {
 
 public protocol CandleStickDataProvider: ChartDataProviderBase {
     
-    /**
-     Get the y value for the target x value
-     
-     - Parameter for: The target value we want to get y value of
-     
-     - Returns: The corresponding y value or nil if no value
-     */
+    /// The candle at an available X coordinate, or nil to omit it.
     func getCandleStickDataPoint(for xValue: Double) -> CandleStickDataPoint?
 }
 
 public protocol VolumeDataProvider: ChartDataProviderBase {
+    /// Returns volume and color at an available X coordinate, or nil to omit that bar.
+    /// Only finite, positive volumes inside the visible X range contribute to panel scaling.
     func getVolumeValueAndColor(for xValue: Double) -> (volume: Double, color: ChartColor)?
 }
