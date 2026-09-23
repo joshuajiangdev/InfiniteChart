@@ -9,6 +9,50 @@ import AppKit
 @testable import InfiniteChart
 
 final class PlatformSupportTests: XCTestCase {
+    /// Verifies the chart's native draw pass produces a visible line without a candle or volume provider.
+    func testNativeDrawingSupportsLineOnlyProviders() async throws {
+        try await MainActor.run {
+            let chart = InfiniteChartBase(
+                frame: CGRect(x: 0, y: 0, width: 440, height: 330),
+                dataProvider: LineOnlyTestDataProvider(),
+                xAxisConfig: AxisConfig(requiredSpace: 30),
+                yAxisConfig: AxisConfig(requiredSpace: 40)
+            )
+            layout(chart)
+            let pixels = try render(chart)
+            let yellowPixels = stride(from: 0, to: pixels.count, by: 4).filter {
+                pixels[$0] > 180 && pixels[$0 + 1] > 180 && pixels[$0 + 2] < 80 && pixels[$0 + 3] > 180
+            }
+            XCTAssertGreaterThan(yellowPixels.count, 100)
+        }
+    }
+
+    /// Verifies off-plot candles and indicator segments remain visible inside the plot without painting over axes.
+    func testNativeDrawingClipsCandlesAndOverlaysToThePlot() async throws {
+        try await MainActor.run {
+            let chart = InfiniteChartBase(
+                frame: CGRect(x: 0, y: 0, width: 440, height: 330),
+                dataProvider: PlotClippingTestDataProvider(),
+                xAxisConfig: AxisConfig(requiredSpace: 30),
+                yAxisConfig: AxisConfig(requiredSpace: 40)
+            )
+            layout(chart)
+            let pixels = try render(chart)
+            var plotPixels = 0
+            var axisPixels = 0
+            for y in 0..<330 {
+                for x in 0..<440 {
+                    let offset = (y * 440 + x) * 4
+                    guard pixels[offset] > 180, pixels[offset + 1] < 80, pixels[offset + 3] > 180 else { continue }
+                    if x < 400, y < 300 { plotPixels += 1 } else { axisPixels += 1 }
+                }
+            }
+            XCTAssertGreaterThan(plotPixels, 100, "The visible portion of the candle and overlay must still render.")
+            XCTAssertEqual(axisPixels, 0, "Red candles and magenta overlays must not paint over either axis.")
+        }
+    }
+
+    /// Verifies both axes apply the application's formatter to their displayed labels.
     func testAxisFormattersRenderConsumerLabels() async {
         await MainActor.run {
             let chart = InfiniteChartBase(
@@ -27,6 +71,7 @@ final class PlatformSupportTests: XCTestCase {
         }
     }
 
+    /// Verifies native view and style types, subview ownership, and provider-selected renderers on both platforms.
     func testChartUsesNativeViewsAndAcceptsNativeStyles() async {
         await MainActor.run {
             let font: ChartFont = .systemFont(ofSize: 17)
@@ -58,6 +103,7 @@ final class PlatformSupportTests: XCTestCase {
         }
     }
 
+    /// Verifies resizing preserves the configured axis spaces while expanding the plot.
     func testAxesAndPlotFollowNativeViewResizing() async {
         await MainActor.run {
             let chart = makeChart()
@@ -76,6 +122,7 @@ final class PlatformSupportTests: XCTestCase {
         }
     }
 
+    /// Verifies plot corners and the midpoint map to the same data coordinates after resizing.
     func testDataCoordinatesMatchPlotCornersBeforeAndAfterResize() async {
         await MainActor.run {
             let chart = makeChart()
@@ -101,6 +148,7 @@ final class PlatformSupportTests: XCTestCase {
         }
     }
 
+    /// Verifies a chart created at zero size acquires correct plot geometry on its first nonempty layout.
     func testInitiallyEmptyChartCanBeLaidOutAfterReceivingAFrame() async {
         await MainActor.run {
             let chart = makeChart(frame: .zero)
@@ -115,6 +163,7 @@ final class PlatformSupportTests: XCTestCase {
         }
     }
 
+    /// Verifies native pans respect enabled axes, clear completed drag state, and survive layout.
     func testNativePanGesturesMoveOnlyEnabledAxesAndClearDragState() async {
         await MainActor.run {
             let expectedPixels = [CGPoint(x: 235, y: 170), CGPoint(x: 235, y: 150), CGPoint(x: 200, y: 170)]
@@ -153,6 +202,7 @@ final class PlatformSupportTests: XCTestCase {
         }
     }
 
+    /// Verifies native pinches respect enabled axes and reset their scale so repeated handling does not zoom again.
     func testNativePinchGesturesZoomEnabledAxesAndResetIncrementalScale() async {
         await MainActor.run {
             let expectedPixels = [CGPoint(x: 150, y: 90), CGPoint(x: 0, y: 75), CGPoint(x: 100, y: 0)]
@@ -199,6 +249,7 @@ final class PlatformSupportTests: XCTestCase {
         }
     }
 
+    /// Verifies the final available timestamp contributes both candle and volume pixels.
     func testNativeDrawingIncludesLastAvailableCandleAndVolume() async throws {
         try await MainActor.run {
             let chart = makeChart()
@@ -211,6 +262,7 @@ final class PlatformSupportTests: XCTestCase {
         }
     }
 
+    /// Verifies the native draw pass emits each provider-backed layer's expected color.
     func testNativeDrawingRendersCandlesVolumesAndTechnicalIndicators() async throws {
         try await MainActor.run {
             let chart = makeChart()
@@ -236,6 +288,7 @@ final class PlatformSupportTests: XCTestCase {
         }
     }
 
+    /// Verifies drawing a dirty subregion matches clipping a full redraw to that same region.
     func testPartialNativeRedrawPreservesChartGeometry() async throws {
         try await MainActor.run {
             let chart = makeChart()
@@ -249,6 +302,7 @@ final class PlatformSupportTests: XCTestCase {
         }
     }
 
+    /// Verifies label rotation changes the orientation of the text's rendered pixel bounds.
     func testAxisLabelsDrawHorizontalAndRotatedText() async throws {
         try await MainActor.run {
             let horizontalLabel = AxisLabel(frame: CGRect(x: 0, y: 0, width: 100, height: 30))
@@ -293,6 +347,8 @@ final class PlatformSupportTests: XCTestCase {
         #endif
     }
 
+    /// Renders native drawing into RGBA bytes, optionally restricting the dirty region and context clip.
+    /// Uses a downward Y direction and restores the platform's graphics context after drawing.
     @MainActor
     private func render(_ view: ChartPlatformView, dirtyRect: CGRect? = nil, clipTo: CGRect? = nil) throws -> [UInt8] {
         let width = Int(view.bounds.width)
@@ -325,6 +381,7 @@ final class PlatformSupportTests: XCTestCase {
         return Array(UnsafeBufferPointer(start: data, count: bytesPerRow * height))
     }
 
+    /// Finds the bounding rectangle of RGBA pixels whose alpha exceeds 100, failing if none are present.
     private func opaquePixelBounds(_ pixels: [UInt8], width: Int) throws -> CGRect {
         let indices = stride(from: 0, to: pixels.count, by: 4).filter { pixels[$0 + 3] > 100 }.map { $0 / 4 }
         let minX = try XCTUnwrap(indices.map { $0 % width }.min(), "The label must render visible text.")
@@ -392,5 +449,38 @@ private struct PlatformTestDataProvider: CandleStickDataProvider, VolumeDataProv
     func getVolumeValueAndColor(for xValue: Double) -> (volume: Double, color: ChartColor)? {
         guard (60_000...180_000).contains(xValue) else { return nil }
         return (volume: xValue / 60_000, color: .blue)
+    }
+}
+
+private struct LineOnlyTestDataProvider: LineChartDataProvider {
+    let redrawStream = Empty<Void, Never>().eraseToAnyPublisher()
+
+    func getInitDataRanges() -> DataRanges? {
+        DataRanges(chartXMin: 0, deltaX: 4, chartYMin: 0, deltaY: 10)
+    }
+
+    func getClosestXValue(to xValue: Double, seekBelow: Bool, offset: Int) -> Double? {
+        let rounded = xValue.rounded(seekBelow ? .down : .up)
+        return min(4, max(0, rounded + Double(seekBelow ? -offset : offset)))
+    }
+
+    func getYValue(for xValue: Double) -> Double? { 5 }
+}
+
+private struct PlotClippingTestDataProvider: CandleStickDataProvider {
+    let redrawStream = Just(()).eraseToAnyPublisher()
+    let technicalIndicators = [TechnicalIndicator(
+        name: "Clipped overlay", color: .magenta,
+        dataPoints: [(x: 1, y: 5), (x: 5, y: 5)]
+    )]
+
+    func getInitDataRanges() -> DataRanges? {
+        DataRanges(chartXMin: 0, deltaX: 4, chartYMin: 0, deltaY: 10)
+    }
+
+    func getClosestXValue(to xValue: Double, seekBelow: Bool, offset: Int) -> Double? { 2 }
+
+    func getCandleStickDataPoint(for xValue: Double) -> CandleStickDataPoint? {
+        CandleStickDataPoint(high: 1, low: -1, open: 0.5, close: -0.5, color: .red)
     }
 }
