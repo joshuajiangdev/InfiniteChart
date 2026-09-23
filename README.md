@@ -1,6 +1,6 @@
 # InfiniteChart
 
-A native macOS and iOS charting library distributed with Swift Package Manager. `Package.swift`
+A native macOS and iOS chart rendering library distributed with Swift Package Manager. `Package.swift`
 defines the library and its tests; no `.xcodeproj` or checked-in workspace is
 required.
 
@@ -42,6 +42,35 @@ Drag to pan and pinch to zoom on either platform. macOS also supports mouse whee
 and trackpad scrolling to pan. Gestures on an axis affect only that axis.
 Use `AxisConfig.labelFormatter` to display timestamps, prices, or other custom labels.
 
+## Provider composition
+
+Conform to `LineChartDataProvider`, `CandleStickDataProvider`, or `VolumeDataProvider`
+to enable each built-in renderer; combine protocols to overlay them. Optional
+`technicalIndicators` are supplied as already-computed line series and default to
+an empty array. The application owns fetching, storage, aggregation, indicator
+calculation, and navigation policy.
+
+X coordinates can use any finite numeric units and need not be evenly spaced.
+`getClosestXValue(to:seekBelow:offset:)` finds an available point at or below/above
+the target; offset 0 includes an exact match and offset 1 moves to its next
+neighbor in that direction. At a boundary, return nil or clamp to the endpoint.
+The renderer uses these neighbors directly, including line segments crossing the
+plot edge. Missing/nonfinite line samples create gaps.
+
+Return nil from `getInitDataRanges()` while loading, then emit `redrawStream` when
+data is ready. Initial ranges must have finite minima and positive finite spans;
+invalid ranges wait for a later valid redraw. Redraws after initialization preserve
+the viewport, as do plot resizes. `redrawStream` may be a `PassthroughSubject`;
+it does not need an initial event. Keep provider reads and mutations on the main actor.
+
+Coordinates use `CGAffineTransform` through `AffineTransformer` and
+`AffineTransformerProvider`. The old `AccelerateTransformer` and
+`AccelerateTransformerProvider` names remain as deprecated aliases. Pan/zoom uses
+data-independent units; nonfinite, nonpositive, or noninvertible gesture updates
+are ignored. Axis label counts of zero hide labels, and invalid axis space becomes zero.
+
+## Viewport
+
 Use `chart.viewportStream.value` to read the current viewport, or subscribe to
 `chart.viewportStream` for updates:
 
@@ -57,7 +86,7 @@ let viewportObservation = chart.viewportStream
 ```
 
 The chart maintains a `CurrentValueSubject<ChartViewport?, Never>`. Its value is
-nil before layout or while the plot is empty; use `compactMap` to observe only
+nil before valid data/layout or while the plot is empty; use `compactMap` to observe only
 valid viewports. The value stays current even when no application is subscribed.
 The transform provider stores updates before notifying subscribers, so coordinate
 conversion and viewport reads reflect the same committed transform.
@@ -119,6 +148,9 @@ xcodebuild -scheme InfiniteChart \
     -derivedDataPath .build/ios \
     test CODE_SIGNING_ALLOWED=NO
 ```
+
+The [architecture review](Documentation/Architecture.md) explains the current design and proposed custom drawing API.
+The [rendering audit](Documentation/RenderingAudit.md) records the correctness fixes and validation.
 
 The tests cover coordinate transforms, native view layout and resizing, pan and
 pinch gestures, axis labels, and chart rendering on both macOS and iOS. GitHub
